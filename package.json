@@ -1,0 +1,42 @@
+{
+  "name": "telegram-user-client",
+  "version": "0.1.0",
+  "description": "TypeScript library + CLI that logs into Telegram as a real user (MTProto via GramJS) to send and receive DMs.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "main": "dist/src/index.js",
+  "types": "dist/src/index.d.ts",
+  "bin": {
+    "telegram-cli": "dist/src/cli/index.js",
+    "tg": "dist/src/cli/index.js"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsc && chmod +x dist/src/cli/index.js",
+    "postinstall": "[ -d dist ] || npm run build",
+    "dev": "tsx src/cli/index.ts",
+    "cli": "tsx src/cli/index.ts",
+    "start": "node dist/src/cli/index.js",
+    "link": "npm run build && npm link",
+    "unlink": "npm unlink -g telegram-user-client",
+    "test": "vitest run",
+    "coverage": "vitest run --coverage"
+  },
+  "dependencies": {
+    "telegram": "^2.26.22",
+    "commander": "^12.0.0",
+    "pino": "^9.0.0",
+    "dotenv": "^16.0.0",
+    "input": "^1.0.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "@types/node": "^20.0.0",
+    "tsx": "^4.0.0",
+    "vitest": "^2.0.0",
+    "@vitest/coverage-v8": "^2.0.0",
+    "pino-pretty": "^11.0.0"
+  }
+}
