@@ -470,6 +470,31 @@ If you only want to stop using the CLI temporarily without revoking the session,
 
 ---
 
+## 9b. Voice Bridge Environment Variables (plan-002)
+
+These vars are required only when running the bridge with voice support enabled (i.e. `npm run bridge`). The library/CLI surface (`telegram-cli`) does not consume them. All seven throw `VoiceBridgeConfigError` (named after the offending variable) if missing — there are no defaults, per project rule "no fallback for configuration".
+
+| Variable | Purpose | How to obtain | Example |
+|---|---|---|---|
+| `GOOGLE_APPLICATION_CREDENTIALS` | Path to ADC JSON file. The Google Cloud SDKs auto-load this. | `gcloud auth application-default login --account=<personal-gmail>` writes it to `~/.config/gcloud/application_default_credentials.json`. **Renew every ~7 days** — see "Expiry tracking" below. | `~/.config/gcloud/application_default_credentials.json` |
+| `GOOGLE_CLOUD_PROJECT` | GCP project to bill for Speech v2 + TTS calls. The ADC account must have `serviceusage.services.use` on this project. | `gcloud projects list` while logged into the personal account. | `gen-lang-client-0063450259` |
+| `VOICE_BRIDGE_TTS_VOICE_EL` | TTS voice name for Greek replies. | List with `gcloud --project=<PROJECT> ml language list-voices --filter="languageCodes=el-GR"`. Pick a `Chirp3-HD` variant for best quality. | `el-GR-Chirp3-HD-Aoede` |
+| `VOICE_BRIDGE_TTS_VOICE_EN` | TTS voice name for English replies. | Same as above, filter on `en-US`. | `en-US-Chirp3-HD-Aoede` |
+| `VOICE_BRIDGE_MAX_AUDIO_SECONDS` | Cap on synthesised voice-note duration before truncation. Replies above this are sent as full text + a truncated voice note ending with a "see text above" tail. | Tune for your listening preference. 60 s is reasonable for driving — long enough to be useful, short enough to absorb. | `60` |
+| `VOICE_BRIDGE_REJECT_ABOVE_SECONDS` | Inbound voice-note rejection threshold (safety net against accidentally sending megabyte voice notes). Cloud Speech v2 sync API has its own 60 s hard limit, so values above 60 only matter as a friendly user-facing message. | Recommended: 300 (= 5 minutes). Bridge uses byte size as a proxy. | `300` |
+| `VOICE_BRIDGE_KEEP_AUDIO_FILES` | If `true`, downloaded inbound voice files and synthesised outbound voice files stay on disk (useful for debugging). If `false`, both are deleted after processing (recommended for privacy). Accepted forms: `true|false|1|0|yes|no`. | Set `false` for production, `true` for shakedown. | `false` |
+
+### Expiry tracking — ADC renewal
+
+ADC tokens issued via `gcloud auth application-default login` expire after roughly 7 days. The bridge does not auto-renew. Per the project's "expiring credential" convention, track the renewal date in `Issues - Pending Items.md` (or your preferred system) and re-run the login command before expiry. Symptom of expired ADC: every voice message logs an `UNAUTHENTICATED` or `PERMISSION_DENIED` error and the user receives `voice transcription failed:` text.
+
+### Per-environment notes
+
+- **Personal vs work account**: ADC is account-scoped. If you have multiple gcloud accounts (e.g., work + personal), confirm with `curl -s -H "Authorization: Bearer $(gcloud auth application-default print-access-token)" https://www.googleapis.com/oauth2/v1/tokeninfo` which account the ADC belongs to. Voice bridge usage typically goes against a personal project to keep work/personal billing separate.
+- **API enablement**: `GOOGLE_CLOUD_PROJECT` must have both `speech.googleapis.com` and `texttospeech.googleapis.com` enabled — see `docs/design/voice-bridge-setup.md` step 3.
+
+---
+
 ## 10. Cross-references
 
 - **README.md** — user-facing quickstart (one page).

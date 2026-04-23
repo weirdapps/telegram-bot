@@ -6,6 +6,7 @@
 
 import { promises as fs } from 'node:fs';
 import { Api, type TelegramClient } from 'telegram';
+import { CustomFile } from 'telegram/client/uploads.js';
 import { NewMessage, type NewMessageEvent } from 'telegram/events/index.js';
 import { FloodWaitError } from 'telegram/errors/index.js';
 
@@ -349,6 +350,66 @@ export class TelegramUserClient {
         chatId: info.chatId.toString(),
       },
       'document sent',
+    );
+    return info;
+  }
+
+  /**
+   * Sends an OGG/Opus voice note to a chat. The audio MUST already be in
+   * OGG/Opus format (48 kHz mono recommended) — Telegram clients will refuse
+   * to play other encodings as voice notes.
+   *
+   * The `voiceNote: true` GramJS flag, combined with the explicit
+   * `Api.DocumentAttributeAudio({ voice: true, duration })` attribute, is what
+   * makes the message render as the round playable waveform UI in Telegram
+   * instead of a generic file attachment.
+   *
+   * @param peer     The recipient (PeerInput: username, phone, or numeric id).
+   * @param audio    OGG/Opus bytes already encoded.
+   * @param duration Duration of the audio in whole seconds (Telegram requires this).
+   * @param caption  Optional caption rendered above the waveform.
+   *
+   * Closes Pending Item #5 ("Outgoing voice / audio not supported").
+   */
+  async sendVoice(
+    peer: PeerInput,
+    audio: Buffer,
+    duration: number,
+    caption?: string,
+  ): Promise<SentMessageInfo> {
+    this.assertConnected();
+    if (!Buffer.isBuffer(audio) || audio.length === 0) {
+      throw new Error('sendVoice: audio must be a non-empty Buffer');
+    }
+    if (!Number.isInteger(duration) || duration <= 0) {
+      throw new Error('sendVoice: duration must be a positive integer (seconds)');
+    }
+    const resolved = await resolvePeer(this.client, peer, this.logger);
+    const file = new CustomFile('voice.ogg', audio.length, '', audio);
+    const sent = await withFloodRetry(
+      () =>
+        this.client.sendFile(resolved, {
+          file,
+          voiceNote: true,
+          attributes: [
+            new Api.DocumentAttributeAudio({ voice: true, duration }),
+          ],
+          ...(caption !== undefined ? { caption } : {}),
+        }),
+      { logger: this.logger, maxAutoWaitSeconds: 60, operation: 'sendVoice' },
+    );
+    const info = buildSentInfo(sent, peer);
+    this.logger.info(
+      {
+        event: 'message_sent',
+        component: 'client',
+        kind: 'voice',
+        durationSeconds: duration,
+        bytes: audio.length,
+        messageId: info.messageId,
+        chatId: info.chatId.toString(),
+      },
+      'voice note sent',
     );
     return info;
   }

@@ -22,21 +22,26 @@
     "link": "npm run build && npm link",
     "unlink": "npm unlink -g telegram-user-client",
     "test": "vitest run",
-    "coverage": "vitest run --coverage"
+    "coverage": "vitest run --coverage",
+    "bridge": "tsx bridge/src/index.ts"
   },
   "dependencies": {
-    "telegram": "^2.26.22",
+    "@anthropic-ai/claude-agent-sdk": "^0.2.0",
+    "@google-cloud/speech": "^7.3.0",
+    "@google-cloud/text-to-speech": "^6.4.0",
     "commander": "^12.0.0",
-    "pino": "^9.0.0",
     "dotenv": "^16.0.0",
-    "input": "^1.0.1"
+    "input": "^1.0.1",
+    "pino": "^9.0.0",
+    "telegram": "^2.26.22",
+    "zod": "^4.0.0"
   },
   "devDependencies": {
-    "typescript": "^5.0.0",
     "@types/node": "^20.0.0",
-    "tsx": "^4.0.0",
-    "vitest": "^2.0.0",
     "@vitest/coverage-v8": "^2.0.0",
-    "pino-pretty": "^11.0.0"
+    "pino-pretty": "^11.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.0.0",
+    "vitest": "^2.0.0"
   }
 }

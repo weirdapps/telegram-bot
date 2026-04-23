@@ -260,8 +260,45 @@ These items are explicitly **not** delivered by v1. Each has a stable `OOS-NN` I
 
 ---
 
+---
+
+## 6. Voice Bridge Extension (plan-002)
+
+### F-044 — Inbound voice transcription
+**File**: `bridge/src/stt/google.ts`
+The bridge auto-transcribes inbound Telegram voice notes using Google Cloud Speech-to-Text v2 (`chirp_2` model) with auto language detection across `el-GR` and `en-US`. The transcript is fed into the existing Claude pipeline as if it had been typed.
+
+### F-045 — Outbound voice synthesis
+**File**: `bridge/src/tts/google.ts`, `src/client/TelegramUserClient.ts::sendVoice`
+Claude replies are optionally synthesised via Google Cloud Text-to-Speech (Chirp 3 HD voices, OGG/Opus 48 kHz mono) and delivered as native Telegram voice notes (round playable waveform UI) via `sendVoice(peer, audio: Buffer, duration: number, caption?)`. Closes original Pending Item #5.
+
+### F-046 — Voice mode preference
+**File**: `bridge/src/voiceMode.ts`, `bridge/src/state.ts`
+Per-conversation voice reply preference, persisted in `BridgeState.voiceMode`: `'mirror'` (voice in → voice out, default), `'always'` (every reply in voice), `'off'` (text-only replies). Override via `/voice [mirror|always|off]` slash command.
+
+### F-047 — Reply routing
+**File**: `bridge/src/replyRouter.ts`
+Pure function that decides whether to send text, voice, or both based on `(inputModality, voiceMode, replyText, detectedLanguage, maxAudioSeconds)`. Long replies (estimated > maxAudioSeconds of speech) are sent as full text first followed by a truncated voice note ending with a language-appropriate "see text above" tail phrase — no information loss.
+
+### F-048 — Inbound voice rejection cap
+**File**: `bridge/src/index.ts::handleVoiceMessage`
+Voice notes whose byte size suggests duration above `VOICE_BRIDGE_REJECT_ABOVE_SECONDS` are rejected before STT call, with a user-facing message advising the operator to split the message.
+
+### F-049 — Audio file retention
+**File**: `bridge/src/index.ts`
+Downloaded inbound voice files and synthesised outbound voice files are deleted after successful processing when `VOICE_BRIDGE_KEEP_AUDIO_FILES=false` (suggested for privacy).
+
+### Out-of-scope additions
+
+- **OOS-17 — Real-time streaming voice.** Bridge waits for the complete voice note before transcribing; no partial-result streaming. (Spec ADR-010.)
+- **OOS-18 — Mid-utterance language switching in TTS output.** STT auto-detects one dominant language; TTS uses the matching voice for the entire reply. (Spec ADR-011.)
+- **OOS-19 — Local STT/TTS fallback engine.** Per project rule "no fallback for configuration", missing Google credentials cause `VoiceBridgeConfigError` at startup; there is no degraded `say`-quality mode. (Spec ADR-014.)
+
+---
+
 ## Change Log
 
 | Date | Author | Change |
 |---|---|---|
 | 2026-04-22 | plan-001 | Initial registry — F-001 through F-043, OOS-01 through OOS-16. |
+| 2026-04-23 | plan-002 | Voice bridge extension — F-044 through F-049, OOS-17 through OOS-19. |

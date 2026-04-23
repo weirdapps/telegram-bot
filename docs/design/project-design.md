@@ -1308,4 +1308,25 @@ Phase 6 (Coders) will, working in parallel per §11:
 - Update `CLAUDE.md` with the two `<toolName>` blocks defined in plan-001 §5 (Coder A's responsibility).
 - Update `Issues - Pending Items.md` with any deviations from this design (Coder A's responsibility; Coder B reports findings through this doc).
 
+---
+
+## 13. Voice Bridge Extension (plan-002)
+
+A bidirectional voice channel was added on top of the existing text-only bridge. Rather than restating the design here, the authoritative source for §13 lives in:
+
+- **Spec**: `docs/design/voice-bridge-design.md`
+- **Plan**: `docs/design/plan-002-voice-bridge.md`
+- **Operator setup**: `docs/design/voice-bridge-setup.md`
+
+Summary of additions to the master design:
+
+| Area | Addition |
+|---|---|
+| §3 Repository layout | `bridge/src/stt/google.ts`, `bridge/src/tts/google.ts`, `bridge/src/replyRouter.ts`, `bridge/src/voiceMode.ts`, `bridge/src/voiceBridgeConfig.ts` |
+| §4 Public API | `TelegramUserClient.sendVoice(peer, audio: Buffer, duration: number, caption?)` — closes Pending Item #5 |
+| §5 Configuration | 7 new env vars: `GOOGLE_APPLICATION_CREDENTIALS`, `GOOGLE_CLOUD_PROJECT`, `VOICE_BRIDGE_TTS_VOICE_EL`, `VOICE_BRIDGE_TTS_VOICE_EN`, `VOICE_BRIDGE_MAX_AUDIO_SECONDS`, `VOICE_BRIDGE_REJECT_ABOVE_SECONDS`, `VOICE_BRIDGE_KEEP_AUDIO_FILES` |
+| §6 Error taxonomy | `VoiceBridgeConfigError`, `TranscriptionError`, `SynthesisError` |
+| §10 Testing | `test_scripts/test-replyRouter.ts` (20 cases, pure function), `test_scripts/test-voiceMode.ts` (11 cases, state + slash command); existing 96 tests still pass |
+| §12 ADRs | ADR-010 (sync STT, not streaming), ADR-011 (single voice per reply), ADR-012 (truncate-with-text-first, not split), ADR-013 (voiceMode in StateStore not env), ADR-014 (no local fallback engine) |
+
 End of `project-design.md`.

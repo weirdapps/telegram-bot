@@ -76,6 +76,45 @@
   </info>
 </telegram-user-client>
 
+<voice-bridge>
+  <objective>
+    Bidirectional voice extension to the Telegram → Claude bridge. Inbound Telegram voice notes are auto-transcribed via Google Cloud Speech-to-Text v2 (chirp_2 model, auto-detects el-GR / en-US) and fed into the existing Claude pipeline. Outbound replies are synthesised via Google Cloud Text-to-Speech (Chirp 3 HD voices) and delivered as Telegram voice notes (round playable waveform UI). User-controllable mode via /voice slash command persisted in StateStore.
+  </objective>
+  <command>
+    npm run bridge      (same entry as text-only bridge — voice is wired in automatically when env vars are present)
+  </command>
+  <info>
+    Modules:
+      bridge/src/stt/google.ts      — transcribeOgg(filePath, client, projectId): OGG/Opus → text + languageCode
+      bridge/src/tts/google.ts      — synthesize(text, language, voiceConfig, client): text → OGG/Opus Buffer
+      bridge/src/replyRouter.ts     — pure routeReply({...}) → {text?, voice?} decision
+      bridge/src/voiceMode.ts       — handleVoiceCommand(rawText, ...): /voice [mirror|always|off|<bare>]
+      bridge/src/voiceBridgeConfig.ts — loadVoiceBridgeConfig() reads required env vars (no fallbacks)
+      bridge/src/state.ts           — extended with voiceMode field, default 'mirror' for legacy state files
+      src/client/TelegramUserClient.ts::sendVoice(peer, audio: Buffer, duration: number, caption?)
+
+    Slash commands available in any conversation:
+      /voice                        — show current mode + usage
+      /voice mirror                 — voice in → voice out, text in → text out (default)
+      /voice always                 — every reply in voice (text input gets text + voice)
+      /voice off                    — every reply in text only
+
+    Required env vars (all throw VoiceBridgeConfigError if missing — no fallbacks):
+      GOOGLE_APPLICATION_CREDENTIALS  — path to ADC JSON
+      GOOGLE_CLOUD_PROJECT            — GCP project id (must have Speech v2 + TTS APIs enabled)
+      VOICE_BRIDGE_TTS_VOICE_EL       — Greek voice name, e.g. el-GR-Chirp3-HD-Aoede
+      VOICE_BRIDGE_TTS_VOICE_EN       — English voice name, e.g. en-US-Chirp3-HD-Aoede
+      VOICE_BRIDGE_MAX_AUDIO_SECONDS  — voice reply truncation threshold, e.g. 60
+      VOICE_BRIDGE_REJECT_ABOVE_SECONDS — inbound voice cap, e.g. 300
+      VOICE_BRIDGE_KEEP_AUDIO_FILES   — true|false (false deletes after sending)
+
+    Spec: docs/design/voice-bridge-design.md
+    Plan: docs/design/plan-002-voice-bridge.md
+    Operator setup: docs/design/voice-bridge-setup.md (one-time ADC + API enablement)
+    Tests: test_scripts/test-replyRouter.ts, test_scripts/test-voiceMode.ts (vitest)
+  </info>
+</voice-bridge>
+
 <telegram-cli>
   <objective>
     Thin CLI (built on commander) over the telegram-user-client library. Interactive login, one-off send commands, and a long-running listen command.
