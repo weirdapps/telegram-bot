@@ -88,7 +88,12 @@ export async function synthesize(
       },
     });
   } catch (err) {
-    throw new SynthesisError('Cloud TTS synthesizeSpeech() failed', err);
+    // Surface the underlying API error so the bridge log shows WHY it failed
+    // (5000-char limit, voice-not-found, quota, IAM, etc.) instead of a generic
+    // "synthesizeSpeech failed" with no detail.
+    const e = err as { code?: number | string; message?: string; details?: string };
+    const detail = `voice=${voiceName} chars=${text.length} code=${e.code ?? '?'} msg="${(e.message ?? '').slice(0, 300)}"`;
+    throw new SynthesisError(`Cloud TTS synthesizeSpeech() failed: ${detail}`, err);
   }
 
   const audioContent = response.audioContent;

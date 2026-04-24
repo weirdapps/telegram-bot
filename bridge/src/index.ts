@@ -29,6 +29,7 @@ import {
   type InputModality,
   type ReplyRouterInput,
 } from './replyRouter.js';
+import { stripMarkdownForSpeech } from './markdownStrip.js';
 import type { TextToSpeechClient } from '@google-cloud/text-to-speech';
 
 interface BridgeRuntime {
@@ -287,9 +288,17 @@ async function runClaudeTurn(
   rt: BridgeRuntime,
 ): Promise<void> {
   const s = await rt.state.load();
+  // When the input is voice, hint Claude to write conversationally so the
+  // spoken reply doesn't sound like a markdown document being read aloud.
+  // The hint is a system-level prefix INSIDE the user-turn prompt — visible
+  // to Claude but does not show on the user's screen as a reply.
+  const willSpeak = inputModality === 'voice' && s.voiceMode !== 'off';
+  const promptToSend = willSpeak
+    ? `[BRIDGE-NOTE: this turn arrived as a Telegram voice note from ${detectedLanguage ?? 'unknown lang'}; the reply will be played aloud via TTS. Write conversationally — no markdown formatting (no asterisks, hashes, pipes, tables, code fences, bullet markers, links, "★ Insight" blocks). Keep the answer naturally short for spoken delivery, ideally under ~150 words. The text channel will mirror the same words, so no need for parallel "voice version" / "text version".]\n\n${prompt}`
+    : prompt;
   let result;
   try {
-    result = await askClaude({ prompt, resume: s.sessionId, cwd: rt.cwd });
+    result = await askClaude({ prompt: promptToSend, resume: s.sessionId, cwd: rt.cwd });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     rt.logger.error({ component: 'bridge', err: message }, 'claude error');
@@ -326,9 +335,26 @@ async function runClaudeTurn(
 
   // Then send voice if planned.
   if (plan.voice !== undefined) {
-    try {
+    // Strip markdown BEFORE TTS so asterisks/hashes/pipes don't get spelled
+    // out as "αστερίσκος" / "δίεση" / etc. The text channel still got the
+    // original markdown above; only the spoken version gets stripped.
+    const speakable = stripMarkdownForSpeech(plan.voice.text);
+    rt.logger.info(
+      {
+        component: 'bridge',
+        event: 'tts_request',
+        language: plan.voice.language,
+        chars: speakable.length,
+        rawChars: plan.voice.text.length,
+        truncated: plan.voice.truncated,
+      },
+      'sending text to TTS (markdown stripped)',
+    );
+    if (speakable === '') {
+      rt.logger.warn({ component: 'bridge' }, 'TTS skipped — speakable text is empty after markdown strip');
+    } else { try {
       const synth = await synthesize(
-        plan.voice.text,
+        speakable,
         plan.voice.language,
         rt.voiceCfg.voiceConfig,
         rt.tts,
@@ -350,7 +376,7 @@ async function runClaudeTurn(
       } else {
         throw err;
       }
-    }
+    } }
   }
 }
 
