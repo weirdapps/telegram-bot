@@ -30,7 +30,10 @@ import {
   type ReplyRouterInput,
 } from './replyRouter.js';
 import { stripMarkdownForSpeech } from './markdownStrip.js';
+import { loadEnabledPlugins } from './pluginLoader.js';
+import { withRetryOnTimeout } from './claudeRetry.js';
 import type { TextToSpeechClient } from '@google-cloud/text-to-speech';
+import type { SdkPluginConfig } from '@anthropic-ai/claude-agent-sdk';
 
 interface BridgeRuntime {
   state: StateStore;
@@ -40,6 +43,7 @@ interface BridgeRuntime {
   voiceCfg: VoiceBridgeConfig;
   stt: SpeechClient;
   tts: TextToSpeechClient;
+  plugins: SdkPluginConfig[];
 }
 
 async function main(): Promise<void> {
@@ -75,7 +79,33 @@ async function main(): Promise<void> {
   const stt = createSpeechClient(voiceCfg.projectId, voiceCfg.keyFilename);
   const tts = createTtsClient(voiceCfg.projectId, voiceCfg.keyFilename);
 
-  const rt: BridgeRuntime = { state, client, logger, cwd, voiceCfg, stt, tts };
+  // Load enabled Claude Code plugins once at startup. With BRIDGE_PLUGIN_
+  // ALLOWLIST set (plan-004) the bridge restricts itself to a curated subset
+  // — much faster cold starts and far fewer flaky-MCP hangs than mirroring
+  // the interactive CLI's full 34-plugin set. See pluginLoader.ts.
+  const pluginLoad = loadEnabledPlugins({ logger });
+  logger.info(
+    {
+      component: 'bridge',
+      loadedPlugins: pluginLoad.loadedKeys.length,
+      skippedPlugins: pluginLoad.skipped.length,
+      deniedPlugins: pluginLoad.denied.length,
+      keys: pluginLoad.loadedKeys,
+      allowlistActive: !!(process.env.BRIDGE_PLUGIN_ALLOWLIST ?? '').trim(),
+    },
+    `loaded ${pluginLoad.loadedKeys.length} plugins from user settings`,
+  );
+
+  const rt: BridgeRuntime = {
+    state,
+    client,
+    logger,
+    cwd,
+    voiceCfg,
+    stt,
+    tts,
+    plugins: pluginLoad.plugins,
+  };
 
   // FIFO queue: serialise Claude calls so concurrent DMs don't race.
   let queue: Promise<void> = Promise.resolve();
@@ -298,9 +328,43 @@ async function runClaudeTurn(
     : prompt;
   let result;
   try {
-    result = await askClaude({ prompt: promptToSend, resume: s.sessionId, cwd: rt.cwd });
+    // plan-004: retry once on silence-watchdog timeout, with a fresh
+    // (resume=null) subprocess. The first failure clears any stored
+    // sessionId so the second attempt cannot inherit a corrupted resume.
+    result = await withRetryOnTimeout(
+      (resume) =>
+        askClaude({
+          prompt: promptToSend,
+          resume,
+          cwd: rt.cwd,
+          plugins: rt.plugins,
+        }),
+      s.sessionId,
+      {
+        onRetry: async () => {
+          if (s.sessionId !== null) {
+            await rt.state.save({ ...s, sessionId: null });
+          }
+          rt.logger.warn(
+            { component: 'bridge', priorSessionId: s.sessionId },
+            'silence watchdog tripped — retrying once with fresh session',
+          );
+        },
+      },
+    );
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
+    // Clear sessionId on terminal failure so a corrupted session (e.g. killed
+    // mid-turn by SIGTERM, leaving --resume to hang silently) cannot trap
+    // subsequent turns.
+    if (s.sessionId !== null) {
+      const cur = await rt.state.load();
+      await rt.state.save({ ...cur, sessionId: null });
+      rt.logger.warn(
+        { component: 'bridge', priorSessionId: s.sessionId },
+        'cleared sessionId after terminal error — next turn starts fresh',
+      );
+    }
     rt.logger.error({ component: 'bridge', err: message }, 'claude error');
     await rt.client.sendText(chatId, `error: ${message}`);
     return;
