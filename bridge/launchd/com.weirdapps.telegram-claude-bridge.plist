@@ -22,13 +22,13 @@
     <key>RunAtLoad</key>
     <true/>
 
+    <!-- plan-004: KeepAlive=true (was {SuccessfulExit:false, Crashed:true}).
+         The bridge handles SIGTERM gracefully and exits 0; under the old
+         policy launchd treated that as "successful exit" and refused to
+         restart, leaving the bridge silently down. ThrottleInterval=10
+         (below) bounds restart loops. -->
     <key>KeepAlive</key>
-    <dict>
-        <key>SuccessfulExit</key>
-        <false/>
-        <key>Crashed</key>
-        <true/>
-    </dict>
+    <true/>
 
     <key>ThrottleInterval</key>
     <integer>10</integer>
