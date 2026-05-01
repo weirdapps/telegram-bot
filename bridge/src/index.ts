@@ -61,25 +61,34 @@ async function main(): Promise<void> {
   const cwd = process.env.TELEGRAM_BRIDGE_CWD ?? process.env.HOME ?? process.cwd();
   const state = new StateStore(statePath);
 
-  const sessionString = existsSync(cfg.sessionPath)
-    ? readFileSync(cfg.sessionPath, 'utf8').trim()
-    : '';
-  if (!sessionString) {
-    throw new Error(
-      `No Telegram session at ${cfg.sessionPath}. Run \`telegram-cli login\` first.`,
-    );
-  }
+  const enableSavedMessages = process.env.TELEGRAM_BRIDGE_DISABLE_SAVED_MESSAGES !== 'true';
 
-  const userClient = new TelegramUserClient({
-    apiId: cfg.apiId,
-    apiHash: cfg.apiHash,
-    sessionString,
-    logger,
-    downloadDir: cfg.downloadDir,
-    sessionPath: cfg.sessionPath,
-  });
-  await userClient.connect();
-  const savedMessages = new MtProtoChannel(userClient);
+  const channels: Channel[] = [];
+
+  if (enableSavedMessages) {
+    const sessionString = existsSync(cfg.sessionPath)
+      ? readFileSync(cfg.sessionPath, 'utf8').trim()
+      : '';
+    if (!sessionString) {
+      throw new Error(
+        `No Telegram session at ${cfg.sessionPath}. Run \`telegram-cli login\` first.`,
+      );
+    }
+
+    const userClient = new TelegramUserClient({
+      apiId: cfg.apiId,
+      apiHash: cfg.apiHash,
+      sessionString,
+      logger,
+      downloadDir: cfg.downloadDir,
+      sessionPath: cfg.sessionPath,
+    });
+    await userClient.connect();
+    channels.push(new MtProtoChannel(userClient));
+    logger.info({ component: 'bridge' }, 'saved-messages channel enabled');
+  } else {
+    logger.info({ component: 'bridge' }, 'saved-messages channel disabled (TELEGRAM_BRIDGE_DISABLE_SAVED_MESSAGES=true)');
+  }
 
   const stt = createSpeechClient(voiceCfg.projectId, voiceCfg.keyFilename);
   const tts = createTtsClient(voiceCfg.projectId, voiceCfg.keyFilename);
@@ -103,13 +112,16 @@ async function main(): Promise<void> {
 
   const botToken = process.env.TELEGRAM_BOT_TOKEN?.trim();
 
-  const channels: Channel[] = [savedMessages];
   if (botToken) {
     const botTmpDir = process.env.TELEGRAM_BRIDGE_BOT_TMPDIR ?? `${process.env.HOME ?? ''}/.telegram/bot-inbox`;
     channels.push(new BotApiChannel({ token: botToken, tmpDir: botTmpDir, logger }));
     logger.info({ component: 'bridge', botTmpDir }, 'bot api channel enabled (TELEGRAM_BOT_TOKEN set)');
   } else {
     logger.info({ component: 'bridge' }, 'bot api channel disabled (TELEGRAM_BOT_TOKEN not set)');
+  }
+
+  if (channels.length === 0) {
+    throw new Error('no input channels enabled — set TELEGRAM_BOT_TOKEN and/or unset TELEGRAM_BRIDGE_DISABLE_SAVED_MESSAGES');
   }
 
   const channelByName: Record<string, Channel> = {};
