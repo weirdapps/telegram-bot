@@ -4,7 +4,7 @@
 // Spec: docs/design/voice-bridge-design.md §4.4.
 
 import type { StateStore } from './state.js';
-import type { TelegramUserClient } from '../../src/index.js';
+import type { Channel } from './channels/channel.js';
 import type { VoiceMode } from './replyRouter.js';
 
 const VALID_MODES: ReadonlySet<string> = new Set(['mirror', 'always', 'off']);
@@ -30,9 +30,9 @@ const USAGE_TEXT =
  */
 export async function handleVoiceCommand(
   rawText: string,
-  chatId: bigint,
+  chatId: string,
   state: StateStore,
-  client: TelegramUserClient,
+  channel: Channel,
 ): Promise<boolean> {
   const trimmed = rawText.trim();
   if (!trimmed.startsWith('/voice')) return false;
@@ -42,19 +42,19 @@ export async function handleVoiceCommand(
   // Bare /voice — show current mode + usage.
   if (rest === '') {
     const current = (await state.load()).voiceMode;
-    await client.sendText(chatId, `current voice mode: ${current}\n\n${USAGE_TEXT}`);
+    await channel.sendText(chatId, `current voice mode: ${current}\n\n${USAGE_TEXT}`);
     return true;
   }
 
   // /voice <arg>
   if (!VALID_MODES.has(rest)) {
-    await client.sendText(chatId, `unknown voice mode: "${rest}"\n\n${USAGE_TEXT}`);
+    await channel.sendText(chatId, `unknown voice mode: "${rest}"\n\n${USAGE_TEXT}`);
     return true;
   }
 
   const newMode = rest as VoiceMode;
   const current = await state.load();
   await state.save({ ...current, voiceMode: newMode });
-  await client.sendText(chatId, `voice mode: ${newMode}`);
+  await channel.sendText(chatId, `voice mode: ${newMode}`);
   return true;
 }

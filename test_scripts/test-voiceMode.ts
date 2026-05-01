@@ -20,17 +20,17 @@ beforeEach(async () => {
   store = new StateStore(statePath);
 });
 
-/** Minimal TelegramUserClient stub — only sendText is exercised by these tests. */
-function makeClientStub(): {
-  client: {
-    sendText: (chatId: bigint, text: string) => Promise<void>;
+/** Minimal Channel stub — only sendText is exercised by these tests. */
+function makeChannelStub(): {
+  channel: {
+    sendText: (chatId: string, text: string) => Promise<void>;
   };
-  sent: Array<{ chatId: bigint; text: string }>;
+  sent: Array<{ chatId: string; text: string }>;
 } {
-  const sent: Array<{ chatId: bigint; text: string }> = [];
+  const sent: Array<{ chatId: string; text: string }> = [];
   return {
-    client: {
-      sendText: async (chatId: bigint, text: string) => {
+    channel: {
+      sendText: async (chatId: string, text: string) => {
         sent.push({ chatId, text });
       },
     },
@@ -76,14 +76,14 @@ describe('StateStore — voiceMode field', () => {
 
 describe('handleVoiceCommand', () => {
   it('returns false for non-/voice messages', async () => {
-    const { client } = makeClientStub();
-    const consumed = await handleVoiceCommand('hello world', 123n, store, client as any);
+    const { channel } = makeChannelStub();
+    const consumed = await handleVoiceCommand('hello world', '123', store, channel as any);
     expect(consumed).toBe(false);
   });
 
   it('bare /voice replies with current mode and usage', async () => {
-    const { client, sent } = makeClientStub();
-    const consumed = await handleVoiceCommand('/voice', 123n, store, client as any);
+    const { channel, sent } = makeChannelStub();
+    const consumed = await handleVoiceCommand('/voice', '123', store, channel as any);
     expect(consumed).toBe(true);
     expect(sent).toHaveLength(1);
     expect(sent[0]!.text).toMatch(/current voice mode: mirror/);
@@ -91,16 +91,16 @@ describe('handleVoiceCommand', () => {
   });
 
   it('/voice always sets the mode and acks', async () => {
-    const { client, sent } = makeClientStub();
-    await handleVoiceCommand('/voice always', 456n, store, client as any);
+    const { channel, sent } = makeChannelStub();
+    await handleVoiceCommand('/voice always', '456', store, channel as any);
     expect(sent[0]!.text).toBe('voice mode: always');
     const loaded = await store.load();
     expect(loaded.voiceMode).toBe('always');
   });
 
   it('/voice off sets the mode and acks', async () => {
-    const { client, sent } = makeClientStub();
-    await handleVoiceCommand('/voice off', 456n, store, client as any);
+    const { channel, sent } = makeChannelStub();
+    await handleVoiceCommand('/voice off', '456', store, channel as any);
     expect(sent[0]!.text).toBe('voice mode: off');
     const loaded = await store.load();
     expect(loaded.voiceMode).toBe('off');
@@ -108,16 +108,16 @@ describe('handleVoiceCommand', () => {
 
   it('/voice mirror sets the mode and acks', async () => {
     await store.save({ sessionId: null, lastMessageAt: null, voiceMode: 'always' });
-    const { client, sent } = makeClientStub();
-    await handleVoiceCommand('/voice mirror', 456n, store, client as any);
+    const { channel, sent } = makeChannelStub();
+    await handleVoiceCommand('/voice mirror', '456', store, channel as any);
     expect(sent[0]!.text).toBe('voice mode: mirror');
     const loaded = await store.load();
     expect(loaded.voiceMode).toBe('mirror');
   });
 
   it('/voice <bad> replies with usage error and does not change mode', async () => {
-    const { client, sent } = makeClientStub();
-    const consumed = await handleVoiceCommand('/voice loud', 456n, store, client as any);
+    const { channel, sent } = makeChannelStub();
+    const consumed = await handleVoiceCommand('/voice loud', '456', store, channel as any);
     expect(consumed).toBe(true);
     expect(sent[0]!.text).toMatch(/unknown voice mode/);
     const loaded = await store.load();
@@ -126,8 +126,8 @@ describe('handleVoiceCommand', () => {
 
   it('preserves sessionId and lastMessageAt when changing mode', async () => {
     await store.save({ sessionId: 'preserved-session', lastMessageAt: '2026-04-23', voiceMode: 'mirror' });
-    const { client } = makeClientStub();
-    await handleVoiceCommand('/voice off', 1n, store, client as any);
+    const { channel } = makeChannelStub();
+    await handleVoiceCommand('/voice off', '1', store, channel as any);
     const loaded = await store.load();
     expect(loaded.sessionId).toBe('preserved-session');
     expect(loaded.lastMessageAt).toBe('2026-04-23');
