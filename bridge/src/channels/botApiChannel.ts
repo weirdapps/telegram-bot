@@ -108,10 +108,19 @@ export class BotApiChannel implements Channel {
     if (this.started) return;
     this.started = true;
     // bot.start() blocks until stop() — fire-and-forget with error logging.
+    // If grammy throws (e.g. 409 Conflict when another poller holds the token),
+    // revert the started flag and surface the error so the caller (or operator
+    // tailing logs) can react. Without this catch, errors are silently swallowed.
     void this.bot.start({
       onStart: (info) => {
         this.logger?.info({ component: 'botApiChannel', username: info.username }, `polling as @${info.username}`);
       },
+    }).catch((err) => {
+      this.started = false;
+      this.logger?.error(
+        { component: 'botApiChannel', err: err instanceof Error ? err.message : String(err) },
+        'bot.start() failed — polling not active',
+      );
     });
   }
 
