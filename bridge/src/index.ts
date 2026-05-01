@@ -34,10 +34,14 @@ import { loadEnabledPlugins } from './pluginLoader.js';
 import { withRetryOnTimeout } from './claudeRetry.js';
 import type { TextToSpeechClient } from '@google-cloud/text-to-speech';
 import type { SdkPluginConfig } from '@anthropic-ai/claude-agent-sdk';
+import type { Channel, ChannelMessage } from './channels/channel.js';
+import { MtProtoChannel } from './channels/mtprotoChannel.js';
 
 interface BridgeRuntime {
   state: StateStore;
-  client: TelegramUserClient;
+  channels: Channel[];
+  /** First channel is the "primary" used for replies — replaced in Task 6 with per-message routing. */
+  channel: Channel;
   logger: Logger;
   cwd: string;
   voiceCfg: VoiceBridgeConfig;
@@ -66,7 +70,7 @@ async function main(): Promise<void> {
     );
   }
 
-  const client = new TelegramUserClient({
+  const userClient = new TelegramUserClient({
     apiId: cfg.apiId,
     apiHash: cfg.apiHash,
     sessionString,
@@ -74,7 +78,8 @@ async function main(): Promise<void> {
     downloadDir: cfg.downloadDir,
     sessionPath: cfg.sessionPath,
   });
-  await client.connect();
+  await userClient.connect();
+  const savedMessages = new MtProtoChannel(userClient);
 
   const stt = createSpeechClient(voiceCfg.projectId, voiceCfg.keyFilename);
   const tts = createTtsClient(voiceCfg.projectId, voiceCfg.keyFilename);
@@ -96,9 +101,11 @@ async function main(): Promise<void> {
     `loaded ${pluginLoad.loadedKeys.length} plugins from user settings`,
   );
 
+  const channels: Channel[] = [savedMessages];
   const rt: BridgeRuntime = {
     state,
-    client,
+    channels,
+    channel: savedMessages,
     logger,
     cwd,
     voiceCfg,
@@ -110,63 +117,36 @@ async function main(): Promise<void> {
   // FIFO queue: serialise Claude calls so concurrent DMs don't race.
   let queue: Promise<void> = Promise.resolve();
 
-  client.on('text', (msg) => {
-    if (!isAllowed(msg.senderId, allowed)) {
-      logger.warn(
-        {
-          component: 'bridge',
-          senderId: msg.senderId?.toString() ?? null,
-          chatId: msg.chatId.toString(),
-        },
-        'rejected: sender not allowlisted',
+  // Single shared handler per channel — same FIFO queue serialises across all channels
+  const attachHandlers = (ch: Channel): void => {
+    ch.onText((m) => {
+      if (!isAllowed(m.senderId, allowed)) {
+        logger.warn({ component: 'bridge', channel: m.channel, senderId: m.senderId, chatId: m.chatId }, 'rejected: sender not allowlisted');
+        return;
+      }
+      const text = (m.text ?? '').trim();
+      if (text === '') return;
+      queue = queue.then(() =>
+        handleTextMessage({ ...m, text }, rt).catch((err) => {
+          logger.error({ component: 'bridge', channel: m.channel, err: err instanceof Error ? err.message : String(err) }, 'unhandled error in text handler');
+        }),
       );
-      return;
-    }
-    const text = (msg.text ?? '').trim();
-    if (text === '') return;
-
-    queue = queue.then(() =>
-      handleTextMessage(text, msg.chatId, rt).catch((err) => {
-        logger.error(
-          { component: 'bridge', err: err instanceof Error ? err.message : String(err) },
-          'unhandled error in text handler',
-        );
-      }),
-    );
-  });
-
-  client.on('voice', (msg) => {
-    if (!isAllowed(msg.senderId, allowed)) {
-      logger.warn(
-        {
-          component: 'bridge',
-          senderId: msg.senderId?.toString() ?? null,
-          chatId: msg.chatId.toString(),
-        },
-        'rejected: voice sender not allowlisted',
+    });
+    ch.onVoice((m) => {
+      if (!isAllowed(m.senderId, allowed)) {
+        logger.warn({ component: 'bridge', channel: m.channel, senderId: m.senderId, chatId: m.chatId }, 'rejected: voice sender not allowlisted');
+        return;
+      }
+      queue = queue.then(() =>
+        handleVoiceMessage(m, rt).catch((err) => {
+          logger.error({ component: 'bridge', channel: m.channel, err: err instanceof Error ? err.message : String(err) }, 'unhandled error in voice handler');
+        }),
       );
-      return;
-    }
-    if (!msg.mediaPath) {
-      logger.warn(
-        { component: 'bridge', chatId: msg.chatId.toString() },
-        'voice message arrived without mediaPath — auto-download disabled?',
-      );
-      return;
-    }
-    const mediaPath = msg.mediaPath;
+    });
+  };
 
-    queue = queue.then(() =>
-      handleVoiceMessage(mediaPath, msg.chatId, rt).catch((err) => {
-        logger.error(
-          { component: 'bridge', err: err instanceof Error ? err.message : String(err) },
-          'unhandled error in voice handler',
-        );
-      }),
-    );
-  });
-
-  client.startListening();
+  for (const ch of channels) attachHandlers(ch);
+  for (const ch of channels) await ch.start();
   logger.info(
     {
       component: 'bridge',
@@ -185,7 +165,7 @@ async function main(): Promise<void> {
     await queue.catch(() => undefined);
     stt.close();
     tts.close();
-    await client.disconnect();
+    for (const ch of channels) await ch.stop();
     process.exit(0);
   };
   process.on('SIGINT', shutdown);
@@ -206,27 +186,29 @@ async function persistTurn(state: StateStore, sessionId: string): Promise<void> 
 }
 
 async function handleTextMessage(
-  text: string,
-  chatId: bigint,
+  msg: ChannelMessage,
   rt: BridgeRuntime,
 ): Promise<void> {
+  const text = msg.text ?? '';
+  const chatId = msg.chatId;
+
   // Slash commands handled inline.
   if (text === '/clear') {
     const current = await rt.state.load();
     await rt.state.save({ ...current, sessionId: null, lastMessageAt: null });
-    await rt.client.sendText(chatId, 'session cleared — next message starts fresh.');
+    await rt.channel.sendText(chatId, 'session cleared — next message starts fresh.');
     return;
   }
   if (text === '/status') {
     const s = await rt.state.load();
-    await rt.client.sendText(
+    await rt.channel.sendText(
       chatId,
       `session: ${s.sessionId ?? '(none)'}\nlast: ${s.lastMessageAt ?? '(never)'}\nvoice mode: ${s.voiceMode}`,
     );
     return;
   }
   if (text === '/help') {
-    await rt.client.sendText(
+    await rt.channel.sendText(
       chatId,
       [
         '/clear — reset session',
@@ -238,16 +220,22 @@ async function handleTextMessage(
     return;
   }
   // /voice family
-  if (await handleVoiceCommand(text, chatId, rt.state, rt.client)) return;
+  if (await handleVoiceCommand(text, chatId, rt.state, rt.channel)) return;
 
   await runClaudeTurn(text, chatId, 'text', undefined, rt);
 }
 
 async function handleVoiceMessage(
-  filePath: string,
-  chatId: bigint,
+  msg: ChannelMessage,
   rt: BridgeRuntime,
 ): Promise<void> {
+  if (!msg.mediaPath) {
+    rt.logger.warn({ component: 'bridge', chatId: msg.chatId, channel: msg.channel }, 'voice without mediaPath — drop');
+    return;
+  }
+  const filePath = msg.mediaPath;
+  const chatId = msg.chatId;
+
   // Reject inbound voice notes that are too long for the sync Speech API.
   let stat;
   try {
@@ -257,7 +245,7 @@ async function handleVoiceMessage(
       { component: 'bridge', err: err instanceof Error ? err.message : String(err), filePath },
       'voice file missing on disk',
     );
-    await rt.client.sendText(chatId, 'voice file missing — please re-record');
+    await rt.channel.sendText(chatId, 'voice file missing — please re-record');
     return;
   }
   // Cheap upper-bound: at 24 kbps Opus, 1 s ≈ 3000 bytes; 300 s ≈ 900 kB.
@@ -266,7 +254,7 @@ async function handleVoiceMessage(
   // megabytes of audio.
   const bytesCap = rt.voiceCfg.rejectInboundAboveSeconds * 3000;
   if (stat.size > bytesCap * 4) {
-    await rt.client.sendText(
+    await rt.channel.sendText(
       chatId,
       `voice notes capped at ${rt.voiceCfg.rejectInboundAboveSeconds}s — please split into shorter messages`,
     );
@@ -280,7 +268,7 @@ async function handleVoiceMessage(
   } catch (err) {
     if (err instanceof TranscriptionError) {
       rt.logger.error({ component: 'bridge', err: err.message }, 'STT failed');
-      await rt.client.sendText(chatId, `voice transcription failed: ${err.message}`);
+      await rt.channel.sendText(chatId, `voice transcription failed: ${err.message}`);
     } else {
       throw err;
     }
@@ -289,7 +277,7 @@ async function handleVoiceMessage(
   }
 
   if (transcript.text === '') {
-    await rt.client.sendText(chatId, "couldn't make out the voice note — try again or send text");
+    await rt.channel.sendText(chatId, "couldn't make out the voice note — try again or send text");
     if (!rt.voiceCfg.keepAudioFiles) await safeUnlink(filePath, rt.logger);
     return;
   }
@@ -312,7 +300,7 @@ async function handleVoiceMessage(
 
 async function runClaudeTurn(
   prompt: string,
-  chatId: bigint,
+  chatId: string,
   inputModality: InputModality,
   detectedLanguage: SupportedLanguage | undefined,
   rt: BridgeRuntime,
@@ -366,7 +354,7 @@ async function runClaudeTurn(
       );
     }
     rt.logger.error({ component: 'bridge', err: message }, 'claude error');
-    await rt.client.sendText(chatId, `error: ${message}`);
+    await rt.channel.sendText(chatId, `error: ${message}`);
     return;
   }
   await persistTurn(rt.state, result.sessionId);
@@ -394,7 +382,7 @@ async function runClaudeTurn(
   // Send text first if the plan includes it.
   if (plan.text !== undefined) {
     const chunks = splitMessage(plan.text);
-    for (const chunk of chunks) await rt.client.sendText(chatId, chunk);
+    for (const chunk of chunks) await rt.channel.sendText(chatId, chunk);
   }
 
   // Then send voice if planned.
@@ -423,7 +411,7 @@ async function runClaudeTurn(
         rt.voiceCfg.voiceConfig,
         rt.tts,
       );
-      await rt.client.sendVoice(chatId, synth.audio, synth.durationSeconds);
+      await rt.channel.sendVoice(chatId, synth.audio, synth.durationSeconds);
       if (rt.voiceCfg.keepAudioFiles) {
         const out = `${rt.cwd}/voice-reply-${Date.now()}.ogg`;
         await fs.writeFile(out, synth.audio, { mode: 0o600 });
@@ -435,7 +423,7 @@ async function runClaudeTurn(
         // If we hadn't already sent text, send it now as a fallback.
         if (plan.text === undefined) {
           const chunks = splitMessage(replyText);
-          for (const chunk of chunks) await rt.client.sendText(chatId, chunk);
+          for (const chunk of chunks) await rt.channel.sendText(chatId, chunk);
         }
       } else {
         throw err;
