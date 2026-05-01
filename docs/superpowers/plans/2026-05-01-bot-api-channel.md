@@ -100,13 +100,15 @@ describe('Channel interface shape', () => {
 });
 ```
 
-- [ ] **Step 2: Run test, expect failure**
+- [ ] **Step 2: Verify the test compiles RED (type contract not yet satisfied)**
+
+`expectTypeOf` is a vitest type-only API and `import type` erases at runtime, so vitest itself can't see the missing module. Use `tsc` for TDD red/green on type contracts.
 
 Run:
 ```bash
-cd ~/SourceCode/telegram-bot && npx vitest run test_scripts/test-channel-types.ts
+cd ~/SourceCode/telegram-bot && npm run typecheck
 ```
-Expected: FAIL — `Cannot find module '../bridge/src/channels/channel.js'`.
+Expected: FAIL with `error TS2307: Cannot find module '../bridge/src/channels/channel.js'`.
 
 - [ ] **Step 3: Create the interface**
 
@@ -159,21 +161,21 @@ export interface Channel {
 }
 ```
 
-- [ ] **Step 4: Run test, expect pass**
-
-Run:
-```bash
-cd ~/SourceCode/telegram-bot && npx vitest run test_scripts/test-channel-types.ts
-```
-Expected: PASS, 2 tests.
-
-- [ ] **Step 5: Typecheck**
+- [ ] **Step 4: Verify typecheck now passes (GREEN)**
 
 Run:
 ```bash
 cd ~/SourceCode/telegram-bot && npm run typecheck
 ```
 Expected: exit 0.
+
+- [ ] **Step 5: Runtime sanity check — vitest discovers and "runs" the test**
+
+Run:
+```bash
+cd ~/SourceCode/telegram-bot && npx vitest run test_scripts/test-channel-types.ts
+```
+Expected: 2/2 PASS. The assertions are type-only and run as no-ops at runtime; this only proves the file parses and vitest discovers it.
 
 - [ ] **Step 6: Commit**
 
