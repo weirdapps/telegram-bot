@@ -36,12 +36,12 @@ import type { TextToSpeechClient } from '@google-cloud/text-to-speech';
 import type { SdkPluginConfig } from '@anthropic-ai/claude-agent-sdk';
 import type { Channel, ChannelMessage } from './channels/channel.js';
 import { MtProtoChannel } from './channels/mtprotoChannel.js';
+import { BotApiChannel } from './channels/botApiChannel.js';
 
 interface BridgeRuntime {
   state: StateStore;
   channels: Channel[];
-  /** First channel is the "primary" used for replies — replaced in Task 6 with per-message routing. */
-  channel: Channel;
+  channelByName: Record<string, Channel>;
   logger: Logger;
   cwd: string;
   voiceCfg: VoiceBridgeConfig;
@@ -101,11 +101,23 @@ async function main(): Promise<void> {
     `loaded ${pluginLoad.loadedKeys.length} plugins from user settings`,
   );
 
+  const botToken = process.env.TELEGRAM_BOT_TOKEN?.trim();
+
   const channels: Channel[] = [savedMessages];
+  if (botToken) {
+    const botTmpDir = process.env.TELEGRAM_BRIDGE_BOT_TMPDIR ?? `${process.env.HOME ?? ''}/.telegram/bot-inbox`;
+    channels.push(new BotApiChannel({ token: botToken, tmpDir: botTmpDir, logger }));
+    logger.info({ component: 'bridge', botTmpDir }, 'bot api channel enabled (TELEGRAM_BOT_TOKEN set)');
+  } else {
+    logger.info({ component: 'bridge' }, 'bot api channel disabled (TELEGRAM_BOT_TOKEN not set)');
+  }
+
+  const channelByName: Record<string, Channel> = {};
+  for (const ch of channels) channelByName[ch.name] = ch;
   const rt: BridgeRuntime = {
     state,
     channels,
-    channel: savedMessages,
+    channelByName,
     logger,
     cwd,
     voiceCfg,
@@ -191,24 +203,29 @@ async function handleTextMessage(
 ): Promise<void> {
   const text = msg.text ?? '';
   const chatId = msg.chatId;
+  const out = rt.channelByName[msg.channel];
+  if (!out) {
+    rt.logger.error({ component: 'bridge', channel: msg.channel }, 'unknown channel in text message');
+    return;
+  }
 
   // Slash commands handled inline.
   if (text === '/clear') {
     const current = await rt.state.load();
     await rt.state.save({ ...current, sessionId: null, lastMessageAt: null });
-    await rt.channel.sendText(chatId, 'session cleared — next message starts fresh.');
+    await out.sendText(chatId, 'session cleared — next message starts fresh.');
     return;
   }
   if (text === '/status') {
     const s = await rt.state.load();
-    await rt.channel.sendText(
+    await out.sendText(
       chatId,
       `session: ${s.sessionId ?? '(none)'}\nlast: ${s.lastMessageAt ?? '(never)'}\nvoice mode: ${s.voiceMode}`,
     );
     return;
   }
   if (text === '/help') {
-    await rt.channel.sendText(
+    await out.sendText(
       chatId,
       [
         '/clear — reset session',
@@ -220,9 +237,9 @@ async function handleTextMessage(
     return;
   }
   // /voice family
-  if (await handleVoiceCommand(text, chatId, rt.state, rt.channel)) return;
+  if (await handleVoiceCommand(text, chatId, rt.state, out)) return;
 
-  await runClaudeTurn(text, chatId, 'text', undefined, rt);
+  await runClaudeTurn(text, chatId, msg.channel, 'text', undefined, rt);
 }
 
 async function handleVoiceMessage(
@@ -235,6 +252,11 @@ async function handleVoiceMessage(
   }
   const filePath = msg.mediaPath;
   const chatId = msg.chatId;
+  const out = rt.channelByName[msg.channel];
+  if (!out) {
+    rt.logger.error({ component: 'bridge', channel: msg.channel }, 'unknown channel in voice message');
+    return;
+  }
 
   // Reject inbound voice notes that are too long for the sync Speech API.
   let stat;
@@ -245,7 +267,7 @@ async function handleVoiceMessage(
       { component: 'bridge', err: err instanceof Error ? err.message : String(err), filePath },
       'voice file missing on disk',
     );
-    await rt.channel.sendText(chatId, 'voice file missing — please re-record');
+    await out.sendText(chatId, 'voice file missing — please re-record');
     return;
   }
   // Cheap upper-bound: at 24 kbps Opus, 1 s ≈ 3000 bytes; 300 s ≈ 900 kB.
@@ -254,7 +276,7 @@ async function handleVoiceMessage(
   // megabytes of audio.
   const bytesCap = rt.voiceCfg.rejectInboundAboveSeconds * 3000;
   if (stat.size > bytesCap * 4) {
-    await rt.channel.sendText(
+    await out.sendText(
       chatId,
       `voice notes capped at ${rt.voiceCfg.rejectInboundAboveSeconds}s — please split into shorter messages`,
     );
@@ -268,7 +290,7 @@ async function handleVoiceMessage(
   } catch (err) {
     if (err instanceof TranscriptionError) {
       rt.logger.error({ component: 'bridge', err: err.message }, 'STT failed');
-      await rt.channel.sendText(chatId, `voice transcription failed: ${err.message}`);
+      await out.sendText(chatId, `voice transcription failed: ${err.message}`);
     } else {
       throw err;
     }
@@ -277,7 +299,7 @@ async function handleVoiceMessage(
   }
 
   if (transcript.text === '') {
-    await rt.channel.sendText(chatId, "couldn't make out the voice note — try again or send text");
+    await out.sendText(chatId, "couldn't make out the voice note — try again or send text");
     if (!rt.voiceCfg.keepAudioFiles) await safeUnlink(filePath, rt.logger);
     return;
   }
@@ -294,17 +316,21 @@ async function handleVoiceMessage(
     'voice transcribed',
   );
 
-  await runClaudeTurn(transcript.text, chatId, 'voice', detectedLanguage, rt);
+  await runClaudeTurn(transcript.text, chatId, msg.channel, 'voice', detectedLanguage, rt);
   if (!rt.voiceCfg.keepAudioFiles) await safeUnlink(filePath, rt.logger);
 }
 
 async function runClaudeTurn(
   prompt: string,
   chatId: string,
+  channelName: string,
   inputModality: InputModality,
   detectedLanguage: SupportedLanguage | undefined,
   rt: BridgeRuntime,
 ): Promise<void> {
+  const out = rt.channelByName[channelName];
+  if (!out) throw new Error(`unknown channel: ${channelName}`);
+
   const s = await rt.state.load();
   // When the input is voice, hint Claude to write conversationally so the
   // spoken reply doesn't sound like a markdown document being read aloud.
@@ -354,7 +380,7 @@ async function runClaudeTurn(
       );
     }
     rt.logger.error({ component: 'bridge', err: message }, 'claude error');
-    await rt.channel.sendText(chatId, `error: ${message}`);
+    await out.sendText(chatId, `error: ${message}`);
     return;
   }
   await persistTurn(rt.state, result.sessionId);
@@ -382,7 +408,7 @@ async function runClaudeTurn(
   // Send text first if the plan includes it.
   if (plan.text !== undefined) {
     const chunks = splitMessage(plan.text);
-    for (const chunk of chunks) await rt.channel.sendText(chatId, chunk);
+    for (const chunk of chunks) await out.sendText(chatId, chunk);
   }
 
   // Then send voice if planned.
@@ -411,7 +437,7 @@ async function runClaudeTurn(
         rt.voiceCfg.voiceConfig,
         rt.tts,
       );
-      await rt.channel.sendVoice(chatId, synth.audio, synth.durationSeconds);
+      await out.sendVoice(chatId, synth.audio, synth.durationSeconds);
       if (rt.voiceCfg.keepAudioFiles) {
         const out = `${rt.cwd}/voice-reply-${Date.now()}.ogg`;
         await fs.writeFile(out, synth.audio, { mode: 0o600 });
@@ -423,7 +449,7 @@ async function runClaudeTurn(
         // If we hadn't already sent text, send it now as a fallback.
         if (plan.text === undefined) {
           const chunks = splitMessage(replyText);
-          for (const chunk of chunks) await rt.channel.sendText(chatId, chunk);
+          for (const chunk of chunks) await out.sendText(chatId, chunk);
         }
       } else {
         throw err;
