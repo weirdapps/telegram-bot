@@ -1,10 +1,6 @@
 import 'dotenv/config';
 import { existsSync, readFileSync, promises as fs } from 'node:fs';
-import {
-  TelegramUserClient,
-  loadConfig,
-  createLogger,
-} from '../../src/index.js';
+import { TelegramUserClient, loadConfig, createLogger } from '../../src/index.js';
 import type { Logger } from '../../src/logger/logger.js';
 import { askClaude } from './claude.js';
 import { StateStore, type BridgeState } from './state.js';
@@ -18,11 +14,7 @@ import {
   TranscriptionError,
   type SpeechClient,
 } from './stt/google.js';
-import {
-  createTtsClient,
-  synthesize,
-  SynthesisError,
-} from './tts/google.js';
+import { createTtsClient, synthesize, SynthesisError } from './tts/google.js';
 import {
   routeReply,
   type SupportedLanguage,
@@ -87,7 +79,10 @@ async function main(): Promise<void> {
     channels.push(new MtProtoChannel(userClient));
     logger.info({ component: 'bridge' }, 'saved-messages channel enabled');
   } else {
-    logger.info({ component: 'bridge' }, 'saved-messages channel disabled (TELEGRAM_BRIDGE_DISABLE_SAVED_MESSAGES=true)');
+    logger.info(
+      { component: 'bridge' },
+      'saved-messages channel disabled (TELEGRAM_BRIDGE_DISABLE_SAVED_MESSAGES=true)',
+    );
   }
 
   const stt = createSpeechClient(voiceCfg.projectId, voiceCfg.keyFilename);
@@ -113,15 +108,21 @@ async function main(): Promise<void> {
   const botToken = process.env.TELEGRAM_BOT_TOKEN?.trim();
 
   if (botToken) {
-    const botTmpDir = process.env.TELEGRAM_BRIDGE_BOT_TMPDIR ?? `${process.env.HOME ?? ''}/.telegram/bot-inbox`;
+    const botTmpDir =
+      process.env.TELEGRAM_BRIDGE_BOT_TMPDIR ?? `${process.env.HOME ?? ''}/.telegram/bot-inbox`;
     channels.push(new BotApiChannel({ token: botToken, tmpDir: botTmpDir, logger }));
-    logger.info({ component: 'bridge', botTmpDir }, 'bot api channel enabled (TELEGRAM_BOT_TOKEN set)');
+    logger.info(
+      { component: 'bridge', botTmpDir },
+      'bot api channel enabled (TELEGRAM_BOT_TOKEN set)',
+    );
   } else {
     logger.info({ component: 'bridge' }, 'bot api channel disabled (TELEGRAM_BOT_TOKEN not set)');
   }
 
   if (channels.length === 0) {
-    throw new Error('no input channels enabled — set TELEGRAM_BOT_TOKEN and/or unset TELEGRAM_BRIDGE_DISABLE_SAVED_MESSAGES');
+    throw new Error(
+      'no input channels enabled — set TELEGRAM_BOT_TOKEN and/or unset TELEGRAM_BRIDGE_DISABLE_SAVED_MESSAGES',
+    );
   }
 
   const channelByName: Record<string, Channel> = {};
@@ -145,25 +146,45 @@ async function main(): Promise<void> {
   const attachHandlers = (ch: Channel): void => {
     ch.onText((m) => {
       if (!isAllowed(m.senderId, allowed)) {
-        logger.warn({ component: 'bridge', channel: m.channel, senderId: m.senderId, chatId: m.chatId }, 'rejected: sender not allowlisted');
+        logger.warn(
+          { component: 'bridge', channel: m.channel, senderId: m.senderId, chatId: m.chatId },
+          'rejected: sender not allowlisted',
+        );
         return;
       }
       const text = (m.text ?? '').trim();
       if (text === '') return;
       queue = queue.then(() =>
         handleTextMessage({ ...m, text }, rt).catch((err) => {
-          logger.error({ component: 'bridge', channel: m.channel, err: err instanceof Error ? err.message : String(err) }, 'unhandled error in text handler');
+          logger.error(
+            {
+              component: 'bridge',
+              channel: m.channel,
+              err: err instanceof Error ? err.message : String(err),
+            },
+            'unhandled error in text handler',
+          );
         }),
       );
     });
     ch.onVoice((m) => {
       if (!isAllowed(m.senderId, allowed)) {
-        logger.warn({ component: 'bridge', channel: m.channel, senderId: m.senderId, chatId: m.chatId }, 'rejected: voice sender not allowlisted');
+        logger.warn(
+          { component: 'bridge', channel: m.channel, senderId: m.senderId, chatId: m.chatId },
+          'rejected: voice sender not allowlisted',
+        );
         return;
       }
       queue = queue.then(() =>
         handleVoiceMessage(m, rt).catch((err) => {
-          logger.error({ component: 'bridge', channel: m.channel, err: err instanceof Error ? err.message : String(err) }, 'unhandled error in voice handler');
+          logger.error(
+            {
+              component: 'bridge',
+              channel: m.channel,
+              err: err instanceof Error ? err.message : String(err),
+            },
+            'unhandled error in voice handler',
+          );
         }),
       );
     });
@@ -209,15 +230,15 @@ async function persistTurn(state: StateStore, sessionId: string): Promise<void> 
   });
 }
 
-async function handleTextMessage(
-  msg: ChannelMessage,
-  rt: BridgeRuntime,
-): Promise<void> {
+async function handleTextMessage(msg: ChannelMessage, rt: BridgeRuntime): Promise<void> {
   const text = msg.text ?? '';
   const chatId = msg.chatId;
   const out = rt.channelByName[msg.channel];
   if (!out) {
-    rt.logger.error({ component: 'bridge', channel: msg.channel }, 'unknown channel in text message');
+    rt.logger.error(
+      { component: 'bridge', channel: msg.channel },
+      'unknown channel in text message',
+    );
     return;
   }
 
@@ -254,19 +275,22 @@ async function handleTextMessage(
   await runClaudeTurn(text, chatId, msg.channel, 'text', undefined, rt);
 }
 
-async function handleVoiceMessage(
-  msg: ChannelMessage,
-  rt: BridgeRuntime,
-): Promise<void> {
+async function handleVoiceMessage(msg: ChannelMessage, rt: BridgeRuntime): Promise<void> {
   if (!msg.mediaPath) {
-    rt.logger.warn({ component: 'bridge', chatId: msg.chatId, channel: msg.channel }, 'voice without mediaPath — drop');
+    rt.logger.warn(
+      { component: 'bridge', chatId: msg.chatId, channel: msg.channel },
+      'voice without mediaPath — drop',
+    );
     return;
   }
   const filePath = msg.mediaPath;
   const chatId = msg.chatId;
   const out = rt.channelByName[msg.channel];
   if (!out) {
-    rt.logger.error({ component: 'bridge', channel: msg.channel }, 'unknown channel in voice message');
+    rt.logger.error(
+      { component: 'bridge', channel: msg.channel },
+      'unknown channel in voice message',
+    );
     return;
   }
 
@@ -441,32 +465,40 @@ async function runClaudeTurn(
       'sending text to TTS (markdown stripped)',
     );
     if (speakable === '') {
-      rt.logger.warn({ component: 'bridge' }, 'TTS skipped — speakable text is empty after markdown strip');
-    } else { try {
-      const synth = await synthesize(
-        speakable,
-        plan.voice.language,
-        rt.voiceCfg.voiceConfig,
-        rt.tts,
+      rt.logger.warn(
+        { component: 'bridge' },
+        'TTS skipped — speakable text is empty after markdown strip',
       );
-      await out.sendVoice(chatId, synth.audio, synth.durationSeconds);
-      if (rt.voiceCfg.keepAudioFiles) {
-        const out = `${rt.cwd}/voice-reply-${Date.now()}.ogg`;
-        await fs.writeFile(out, synth.audio, { mode: 0o600 });
-        rt.logger.info({ component: 'bridge', out }, 'voice reply kept on disk');
-      }
-    } catch (err) {
-      if (err instanceof SynthesisError) {
-        rt.logger.error({ component: 'bridge', err: err.message }, 'TTS failed — falling back to text');
-        // If we hadn't already sent text, send it now as a fallback.
-        if (plan.text === undefined) {
-          const chunks = splitMessage(replyText);
-          for (const chunk of chunks) await out.sendText(chatId, chunk);
+    } else {
+      try {
+        const synth = await synthesize(
+          speakable,
+          plan.voice.language,
+          rt.voiceCfg.voiceConfig,
+          rt.tts,
+        );
+        await out.sendVoice(chatId, synth.audio, synth.durationSeconds);
+        if (rt.voiceCfg.keepAudioFiles) {
+          const out = `${rt.cwd}/voice-reply-${Date.now()}.ogg`;
+          await fs.writeFile(out, synth.audio, { mode: 0o600 });
+          rt.logger.info({ component: 'bridge', out }, 'voice reply kept on disk');
         }
-      } else {
-        throw err;
+      } catch (err) {
+        if (err instanceof SynthesisError) {
+          rt.logger.error(
+            { component: 'bridge', err: err.message },
+            'TTS failed — falling back to text',
+          );
+          // If we hadn't already sent text, send it now as a fallback.
+          if (plan.text === undefined) {
+            const chunks = splitMessage(replyText);
+            for (const chunk of chunks) await out.sendText(chatId, chunk);
+          }
+        } else {
+          throw err;
+        }
       }
-    } }
+    }
   }
 }
 

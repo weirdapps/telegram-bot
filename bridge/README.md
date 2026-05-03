@@ -27,11 +27,11 @@ FIFO queue ──▶ Agent SDK query() with resume=sessionId
 
 ## Slash commands
 
-| Command   | Behavior                                            |
-| --------- | --------------------------------------------------- |
-| `/clear`  | Wipe session — next message starts a fresh thread   |
-| `/status` | Show current session ID + last activity timestamp   |
-| `/help`   | List commands                                       |
+| Command   | Behavior                                          |
+| --------- | ------------------------------------------------- |
+| `/clear`  | Wipe session — next message starts a fresh thread |
+| `/status` | Show current session ID + last activity timestamp |
+| `/help`   | List commands                                     |
 
 ## Files
 

@@ -14,13 +14,14 @@ A TypeScript library + thin CLI that logs into Telegram **as your real user acco
 
 ### What it supports (v1)
 
-| Direction | Kinds |
-|---|---|
-| Outgoing | text · image (as Telegram photo) · document (any file, preserves filename) |
-| Incoming (auto-downloaded) | text · photo · voice note · audio file |
-| Incoming (classified, not downloaded) | stickers · GIFs · videos · generic documents |
+| Direction                             | Kinds                                                                      |
+| ------------------------------------- | -------------------------------------------------------------------------- |
+| Outgoing                              | text · image (as Telegram photo) · document (any file, preserves filename) |
+| Incoming (auto-downloaded)            | text · photo · voice note · audio file                                     |
+| Incoming (classified, not downloaded) | stickers · GIFs · videos · generic documents                               |
 
 ### What it does NOT support (v1)
+
 Bot API mode · groups or channels · secret (E2E) chats · outgoing voice/audio/video · multi-account · editing / deleting / reactions / polls · GUI.
 See **Issues - Pending Items.md** for the full deferred-features list.
 
@@ -28,13 +29,13 @@ See **Issues - Pending Items.md** for the full deferred-features list.
 
 ## 2. Prerequisites
 
-| Requirement | Version | Why |
-|---|---|---|
-| Node.js | **≥ 20 LTS** | GramJS 2.26.x and native ESM support |
-| npm | ≥ 10 (bundled with Node 20) | installer |
-| Operating system | macOS or Linux (Windows should work; not a v1 target) | path semantics, file permissions |
-| Telegram account | your own, with 2FA optionally enabled | MTProto user auth |
-| `TELEGRAM_API_ID` and `TELEGRAM_API_HASH` | see §4.1 | MTProto application credentials |
+| Requirement                               | Version                                               | Why                                  |
+| ----------------------------------------- | ----------------------------------------------------- | ------------------------------------ |
+| Node.js                                   | **≥ 20 LTS**                                          | GramJS 2.26.x and native ESM support |
+| npm                                       | ≥ 10 (bundled with Node 20)                           | installer                            |
+| Operating system                          | macOS or Linux (Windows should work; not a v1 target) | path semantics, file permissions     |
+| Telegram account                          | your own, with 2FA optionally enabled                 | MTProto user auth                    |
+| `TELEGRAM_API_ID` and `TELEGRAM_API_HASH` | see §4.1                                              | MTProto application credentials      |
 
 Verify with:
 
@@ -98,11 +99,11 @@ tg send-text --help          # `tg` is identical to `telegram-cli`
 
 **Alternatives to `npm link`**:
 
-| Option | Command | Trade-off |
-|---|---|---|
-| Global install from the local folder | `npm run build && npm install -g .` | Copies the built output into the global prefix. Equivalent user-facing result; does not auto-track further edits. |
-| System-wide symlink (manual) | `sudo ln -s "$PWD/dist/src/cli/index.js" /usr/local/bin/telegram-cli` | Works without npm but bypasses npm's version tracking. |
-| Shell alias (fastest, no build) | add `alias telegram-cli="npx tsx $PWD/src/cli/index.ts"` to `~/.zshrc` or `~/.bashrc` | No build step; slower startup (tsx transform on each run); scoped to your shell. |
+| Option                               | Command                                                                               | Trade-off                                                                                                         |
+| ------------------------------------ | ------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| Global install from the local folder | `npm run build && npm install -g .`                                                   | Copies the built output into the global prefix. Equivalent user-facing result; does not auto-track further edits. |
+| System-wide symlink (manual)         | `sudo ln -s "$PWD/dist/src/cli/index.js" /usr/local/bin/telegram-cli`                 | Works without npm but bypasses npm's version tracking.                                                            |
+| Shell alias (fastest, no build)      | add `alias telegram-cli="npx tsx $PWD/src/cli/index.ts"` to `~/.zshrc` or `~/.bashrc` | No build step; slower startup (tsx transform on each run); scoped to your shell.                                  |
 
 **To uninstall the direct command**:
 
@@ -143,10 +144,10 @@ Visit <https://my.telegram.org>, sign in with the phone number you will use for 
 
 The CLI reads configuration from **environment variables only**. There are two sources, in order of precedence (highest first):
 
-| Priority | Source | Notes |
-|---:|---|---|
-| 1 | **Real process environment** (already exported when the process starts, e.g. from shell `export FOO=bar` or a parent process) | Takes precedence over `.env`. Useful for CI and shell-scoped overrides. |
-| 2 | **`.env` file** in the project root | Loaded at startup via `dotenv/config`. `dotenv` does NOT override variables already present in `process.env`. |
+| Priority | Source                                                                                                                        | Notes                                                                                                         |
+| -------: | ----------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+|        1 | **Real process environment** (already exported when the process starts, e.g. from shell `export FOO=bar` or a parent process) | Takes precedence over `.env`. Useful for CI and shell-scoped overrides.                                       |
+|        2 | **`.env` file** in the project root                                                                                           | Loaded at startup via `dotenv/config`. `dotenv` does NOT override variables already present in `process.env`. |
 
 There are **no CLI flags** for configuration values (flags like `--to` and `--text` are per-command arguments, not config). There is **no TOML / JSON / YAML config file** — env vars are the sole configuration surface.
 
@@ -164,34 +165,34 @@ The optional `TELEGRAM_2FA_PASSWORD` is the only exception — it may be unset, 
 
 All variables are read via `loadConfig()` in `src/config/config.ts`. The table below is normative.
 
-| # | Variable | Required | Type | Purpose |
-|---:|---|:-:|---|---|
-| 1 | `TELEGRAM_API_ID` | ✅ | positive integer | MTProto application ID. Identifies your Telegram application to the network. |
-| 2 | `TELEGRAM_API_HASH` | ✅ | 32-char hex string | MTProto application hash. **Secret.** Paired with the `api_id`. |
-| 3 | `TELEGRAM_PHONE_NUMBER` | ✅ | E.164 with leading `+` | The phone number of the Telegram account the client will act as. |
-| 4 | `TELEGRAM_SESSION_PATH` | ✅ | absolute filesystem path | Where the serialized `StringSession` is persisted after the first login. |
-| 5 | `TELEGRAM_DOWNLOAD_DIR` | ✅ | absolute directory path | Where incoming photo / voice / audio attachments are saved. Auto-created if missing. |
-| 6 | `TELEGRAM_LOG_LEVEL` | ✅ | enum | pino log level. One of `trace`, `debug`, `info`, `warn`, `error`, `silent`. |
-| 7 | `TELEGRAM_2FA_PASSWORD` | ⭕ optional | string | Cloud 2FA password. When set, library consumers can avoid interactive prompts. The CLI does NOT consult this in v1 — it always prompts. |
+|   # | Variable                |  Required   | Type                     | Purpose                                                                                                                                 |
+| --: | ----------------------- | :---------: | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
+|   1 | `TELEGRAM_API_ID`       |     ✅      | positive integer         | MTProto application ID. Identifies your Telegram application to the network.                                                            |
+|   2 | `TELEGRAM_API_HASH`     |     ✅      | 32-char hex string       | MTProto application hash. **Secret.** Paired with the `api_id`.                                                                         |
+|   3 | `TELEGRAM_PHONE_NUMBER` |     ✅      | E.164 with leading `+`   | The phone number of the Telegram account the client will act as.                                                                        |
+|   4 | `TELEGRAM_SESSION_PATH` |     ✅      | absolute filesystem path | Where the serialized `StringSession` is persisted after the first login.                                                                |
+|   5 | `TELEGRAM_DOWNLOAD_DIR` |     ✅      | absolute directory path  | Where incoming photo / voice / audio attachments are saved. Auto-created if missing.                                                    |
+|   6 | `TELEGRAM_LOG_LEVEL`    |     ✅      | enum                     | pino log level. One of `trace`, `debug`, `info`, `warn`, `error`, `silent`.                                                             |
+|   7 | `TELEGRAM_2FA_PASSWORD` | ⭕ optional | string                   | Cloud 2FA password. When set, library consumers can avoid interactive prompts. The CLI does NOT consult this in v1 — it always prompts. |
 
 ---
 
 #### Variable 1 — `TELEGRAM_API_ID`
 
 - **Purpose**: identifies your application to MTProto. Required by every request.
-- **How to obtain**: <https://my.telegram.org> → *API development tools* → create app → `api_id`.
+- **How to obtain**: <https://my.telegram.org> → _API development tools_ → create app → `api_id`.
 - **Valid values**: any positive integer. Example: `23456789`.
-- **Default**: *none* (required — missing value throws `ConfigError`).
+- **Default**: _none_ (required — missing value throws `ConfigError`).
 - **Recommended storage**: not highly sensitive by itself (without the hash it cannot be used), but still treat it as semi-private. Store in `.env` (chmod 600), not in source control.
 - **Expiration**: does not expire. Revoked only when you delete the app registration at my.telegram.org.
-- **Common mistakes**: pasting with quotes or spaces → validation fails (`Number.isInteger`); using a bot API ID from BotFather (that is a *bot token*, not an `api_id`).
+- **Common mistakes**: pasting with quotes or spaces → validation fails (`Number.isInteger`); using a bot API ID from BotFather (that is a _bot token_, not an `api_id`).
 
 #### Variable 2 — `TELEGRAM_API_HASH`
 
 - **Purpose**: authenticates your application. Paired with `api_id`.
 - **How to obtain**: same page as `api_id`.
 - **Valid values**: 32-character hexadecimal string. Example: `0123456789abcdef0123456789abcdef`.
-- **Default**: *none* (required).
+- **Default**: _none_ (required).
 - **Recommended storage**: **secret**. Store in `.env` with `chmod 600`, NEVER commit. For shared/CI use, put it in a secret manager (macOS Keychain, 1Password CLI, Azure Key Vault, HashiCorp Vault) and export into the process environment at launch time.
 - **Expiration**: does not auto-expire. You can rotate it at any time by clicking **Reset hash** at my.telegram.org; that invalidates the old value immediately. No automatic rotation reminder is implemented — see §6.3 for the recommended manual cadence.
 - **Common mistakes**: copying the `api_id` into the hash field; trailing whitespace; confusing with a bot token.
@@ -201,7 +202,7 @@ All variables are read via `loadConfig()` in `src/config/config.ts`. The table b
 - **Purpose**: the phone number the client will log in as. Must be the number of a **real Telegram account you own**.
 - **How to obtain**: it is the number you already use with Telegram Messenger.
 - **Valid values**: international E.164 format with leading `+`, no spaces, no dashes. Example: `+306900000000` or `+12025550123`.
-- **Default**: *none* (required).
+- **Default**: _none_ (required).
 - **Recommended storage**: `.env`. Not as sensitive as the hash but still PII — treat like an email address.
 - **Expiration**: does not expire. If you change your Telegram phone number, update this var and run `logout` + `login` again.
 - **Common mistakes**: forgetting the `+`; including parentheses or dashes; using a landline that cannot receive Telegram codes.
@@ -210,12 +211,12 @@ All variables are read via `loadConfig()` in `src/config/config.ts`. The table b
 
 - **Purpose**: the absolute path at which the client writes the `StringSession` once you complete an interactive login. On subsequent runs, the file is read to skip re-authentication.
 - **How to obtain**: you choose it. Pick a path under your home directory, outside any synced folder (Dropbox, iCloud, OneDrive) to prevent accidental exfiltration.
-- **Valid values**: absolute POSIX path (must start with `/` on macOS/Linux; `C:\…` tolerated on Windows). Example: `/Users/me/.telegram/session.txt`. The parent directory does NOT need to pre-exist for the *login* step — but *reading* on subsequent runs requires the file to be present and readable.
-- **Default**: *none* (required).
+- **Valid values**: absolute POSIX path (must start with `/` on macOS/Linux; `C:\…` tolerated on Windows). Example: `/Users/me/.telegram/session.txt`. The parent directory does NOT need to pre-exist for the _login_ step — but _reading_ on subsequent runs requires the file to be present and readable.
+- **Default**: _none_ (required).
 - **Recommended storage**: **the file itself is equivalent to a password**. The library writes it with mode `0o600` (owner read/write only). Put it on an encrypted volume if your laptop is not full-disk-encrypted. Do not commit. Do not share. Do not place inside the project directory (`.gitignore` excludes `*.session`/`*.session.txt` as a safety net, but prefer `~/.telegram/` or `$XDG_DATA_HOME/telegram-tool/` entirely outside the repo).
 - **Expiration**: the session can be invalidated at any time by:
   - Running `npm run cli -- logout` (calls `auth.LogOut` server-side and deletes the local file).
-  - Terminating the session from Telegram's *Settings → Devices* on any other client.
+  - Terminating the session from Telegram's _Settings → Devices_ on any other client.
   - Extended inactivity — Telegram does not publish an exact TTL, but sessions rarely survive many months of disuse.
 - **Common mistakes**: relative path (rejected — must be absolute); path inside `node_modules/` or the repo (will be wiped by reinstall / accidental commit); world-readable directory; deleting the file without running `logout` first (the server-side session lingers until you explicitly revoke it).
 
@@ -224,7 +225,7 @@ All variables are read via `loadConfig()` in `src/config/config.ts`. The table b
 - **Purpose**: the directory where incoming photos, voice notes, and audio messages are saved by the `listen` subcommand.
 - **How to obtain**: you choose it. The client creates the directory (recursively) at startup if it does not exist.
 - **Valid values**: absolute path. Example: `/Users/me/.telegram/downloads`.
-- **Default**: *none* (required).
+- **Default**: _none_ (required).
 - **Recommended storage**: outside the repo, outside synced folders (incoming messages may be sensitive). Put it on the same volume as your session file for easier backup scoping.
 - **Expiration**: N/A. Consider a periodic cleanup job (e.g. `find $TELEGRAM_DOWNLOAD_DIR -mtime +30 -delete`) if the listener runs 24/7.
 - **Filename scheme**: `{timestampMs}_{chatId}_{messageId}_{kind}{ext}` — e.g. `1714012345678_1234567_42_voice.ogg`. Extensions derive from the attribute filename first, then from a mime → ext map, else `.bin`. See `src/client/media.ts::buildFilename`.
@@ -236,24 +237,24 @@ All variables are read via `loadConfig()` in `src/config/config.ts`. The table b
 - **How to obtain**: pick from the table below.
 - **Valid values**:
 
-  | Value | When to use |
-  |---|---|
-  | `silent` | Never log. Useful when piping JSON output to another tool and you want clean stderr. |
-  | `error` | Only errors. Good for unattended listeners. |
-  | `warn` | Errors + warnings. |
-  | `info` | **Recommended default** — lifecycle events (connect, disconnect, message sent, incoming message routed) without request-level noise. |
-  | `debug` | Adds per-call details. Useful while testing new recipients or caption formatting. |
-  | `trace` | Everything, including MTProto-level chatter bridged from GramJS. Very noisy. |
+  | Value    | When to use                                                                                                                          |
+  | -------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+  | `silent` | Never log. Useful when piping JSON output to another tool and you want clean stderr.                                                 |
+  | `error`  | Only errors. Good for unattended listeners.                                                                                          |
+  | `warn`   | Errors + warnings.                                                                                                                   |
+  | `info`   | **Recommended default** — lifecycle events (connect, disconnect, message sent, incoming message routed) without request-level noise. |
+  | `debug`  | Adds per-call details. Useful while testing new recipients or caption formatting.                                                    |
+  | `trace`  | Everything, including MTProto-level chatter bridged from GramJS. Very noisy.                                                         |
 
-- **Default**: *none* (required — must be set explicitly; invalid values throw).
+- **Default**: _none_ (required — must be set explicitly; invalid values throw).
 - **Recommended storage**: `.env`. You may also override on the CLI with a one-shot `TELEGRAM_LOG_LEVEL=debug npm run cli -- send-text …`.
 - **Expiration**: N/A.
 - **Common mistakes**: capitalization (`INFO` rejected — must be lowercase); typos (`debg` rejected).
 
-#### Variable 7 — `TELEGRAM_2FA_PASSWORD` *(optional)*
+#### Variable 7 — `TELEGRAM_2FA_PASSWORD` _(optional)_
 
 - **Purpose**: cloud 2FA password for library consumers that cannot prompt interactively (daemons, CI).
-- **How to obtain**: it is whatever password you set in Telegram *Settings → Privacy and Security → Two-Step Verification*.
+- **How to obtain**: it is whatever password you set in Telegram _Settings → Privacy and Security → Two-Step Verification_.
 - **Valid values**: any string. If unset or empty, treated as absent.
 - **Default**: absent (i.e. `config.twoFaPassword === undefined`).
 - **CLI behaviour (v1)**: the CLI always prompts for 2FA at login time and **ignores this variable**. Issue #2 in `Issues - Pending Items.md` tracks enabling unattended 2FA login.
@@ -298,7 +299,7 @@ npm run cli -- login
 Step-by-step:
 
 1. The CLI reads config and connects to Telegram.
-2. Telegram sends a one-time **login code** to your existing Telegram clients (mobile app, desktop app) — *not* SMS by default for accounts with other active sessions.
+2. Telegram sends a one-time **login code** to your existing Telegram clients (mobile app, desktop app) — _not_ SMS by default for accounts with other active sessions.
 3. Type the code at the `Enter the code from Telegram:` prompt and press Enter.
 4. If 2FA is enabled, type your 2FA password at the next prompt (input is masked).
 5. On success, the session string is written to `TELEGRAM_SESSION_PATH` with mode `0o600`.
@@ -353,13 +354,13 @@ One JSON line is printed to stdout per incoming DM:
 
 ### 6.3 Secret rotation — recommended cadence
 
-None of the secrets below carry a machine-readable expiration, so rotation is *your* responsibility. Recommended minimums:
+None of the secrets below carry a machine-readable expiration, so rotation is _your_ responsibility. Recommended minimums:
 
-| Secret | Cadence | Trigger |
-|---|---|---|
-| `TELEGRAM_API_HASH` | every 12 months, or immediately on suspicion of compromise | "Reset hash" at my.telegram.org |
+| Secret                             | Cadence                                                            | Trigger                                         |
+| ---------------------------------- | ------------------------------------------------------------------ | ----------------------------------------------- |
+| `TELEGRAM_API_HASH`                | every 12 months, or immediately on suspicion of compromise         | "Reset hash" at my.telegram.org                 |
 | `TELEGRAM_SESSION_PATH` (the file) | every 6 months, or on device change, or on any suspicious activity | `telegram-cli logout` then `telegram-cli login` |
-| `TELEGRAM_2FA_PASSWORD` | per your personal policy | Telegram *Settings → Two-Step Verification* |
+| `TELEGRAM_2FA_PASSWORD`            | per your personal policy                                           | Telegram _Settings → Two-Step Verification_     |
 
 > **Future enhancement (per `CLAUDE.md` rule on expiring parameters)**: a `TELEGRAM_API_HASH_EXPIRES_AT` env var is NOT implemented in v1 because the hash does not auto-expire. If you want rotation reminders, add a calendar event or CI health check that reads the issue date from a manually-maintained file. This is tracked as a pending hardening item.
 
@@ -378,25 +379,23 @@ import {
 } from 'telegram-user-client';
 import { readFileSync, existsSync } from 'node:fs';
 
-const cfg = loadConfig();                 // throws on any missing required var
+const cfg = loadConfig(); // throws on any missing required var
 const logger = createLogger(cfg.logLevel);
 
-const sessionString = existsSync(cfg.sessionPath)
-  ? readFileSync(cfg.sessionPath, 'utf8')
-  : '';
+const sessionString = existsSync(cfg.sessionPath) ? readFileSync(cfg.sessionPath, 'utf8') : '';
 
 const client = new TelegramUserClient({
   apiId: cfg.apiId,
   apiHash: cfg.apiHash,
-  sessionString,                          // empty → must call login() first
+  sessionString, // empty → must call login() first
   logger,
   downloadDir: cfg.downloadDir,
-  sessionPath: cfg.sessionPath,           // where login() will persist the new session
+  sessionPath: cfg.sessionPath, // where login() will persist the new session
 });
 
 await client.connect();
 
-client.on('text', (m)  => logger.info({ from: String(m.chatId), text: m.text }, 'text'));
+client.on('text', (m) => logger.info({ from: String(m.chatId), text: m.text }, 'text'));
 client.on('photo', (m) => logger.info({ from: String(m.chatId), path: m.mediaPath }, 'photo'));
 client.on('voice', (m) => logger.info({ from: String(m.chatId), path: m.mediaPath }, 'voice'));
 client.on('audio', (m) => logger.info({ from: String(m.chatId), path: m.mediaPath }, 'audio'));
@@ -474,15 +473,15 @@ If you only want to stop using the CLI temporarily without revoking the session,
 
 These vars are required only when running the bridge with voice support enabled (i.e. `npm run bridge`). The library/CLI surface (`telegram-cli`) does not consume them. All seven throw `VoiceBridgeConfigError` (named after the offending variable) if missing — there are no defaults, per project rule "no fallback for configuration".
 
-| Variable | Purpose | How to obtain | Example |
-|---|---|---|---|
-| `GOOGLE_APPLICATION_CREDENTIALS` | Path to ADC JSON file. The Google Cloud SDKs auto-load this. | `gcloud auth application-default login --account=<personal-gmail>` writes it to `~/.config/gcloud/application_default_credentials.json`. **Renew every ~7 days** — see "Expiry tracking" below. | `~/.config/gcloud/application_default_credentials.json` |
-| `GOOGLE_CLOUD_PROJECT` | GCP project to bill for Speech v2 + TTS calls. The ADC account must have `serviceusage.services.use` on this project. | `gcloud projects list` while logged into the personal account. | `gen-lang-client-0063450259` |
-| `VOICE_BRIDGE_TTS_VOICE_EL` | TTS voice name for Greek replies. | List with `gcloud --project=<PROJECT> ml language list-voices --filter="languageCodes=el-GR"`. Pick a `Chirp3-HD` variant for best quality. | `el-GR-Chirp3-HD-Aoede` |
-| `VOICE_BRIDGE_TTS_VOICE_EN` | TTS voice name for English replies. | Same as above, filter on `en-US`. | `en-US-Chirp3-HD-Aoede` |
-| `VOICE_BRIDGE_MAX_AUDIO_SECONDS` | Cap on synthesised voice-note duration before truncation. Replies above this are sent as full text + a truncated voice note ending with a "see text above" tail. | Tune for your listening preference. 60 s is reasonable for driving — long enough to be useful, short enough to absorb. | `60` |
-| `VOICE_BRIDGE_REJECT_ABOVE_SECONDS` | Inbound voice-note rejection threshold (safety net against accidentally sending megabyte voice notes). Cloud Speech v2 sync API has its own 60 s hard limit, so values above 60 only matter as a friendly user-facing message. | Recommended: 300 (= 5 minutes). Bridge uses byte size as a proxy. | `300` |
-| `VOICE_BRIDGE_KEEP_AUDIO_FILES` | If `true`, downloaded inbound voice files and synthesised outbound voice files stay on disk (useful for debugging). If `false`, both are deleted after processing (recommended for privacy). Accepted forms: `true|false|1|0|yes|no`. | Set `false` for production, `true` for shakedown. | `false` |
+| Variable                            | Purpose                                                                                                                                                                                                                        | How to obtain                                                                                                                                                                                   | Example                                                 |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- | --- | --- | ---- | ------------------------------------------------- | ------- |
+| `GOOGLE_APPLICATION_CREDENTIALS`    | Path to ADC JSON file. The Google Cloud SDKs auto-load this.                                                                                                                                                                   | `gcloud auth application-default login --account=<personal-gmail>` writes it to `~/.config/gcloud/application_default_credentials.json`. **Renew every ~7 days** — see "Expiry tracking" below. | `~/.config/gcloud/application_default_credentials.json` |
+| `GOOGLE_CLOUD_PROJECT`              | GCP project to bill for Speech v2 + TTS calls. The ADC account must have `serviceusage.services.use` on this project.                                                                                                          | `gcloud projects list` while logged into the personal account.                                                                                                                                  | `gen-lang-client-0063450259`                            |
+| `VOICE_BRIDGE_TTS_VOICE_EL`         | TTS voice name for Greek replies.                                                                                                                                                                                              | List with `gcloud --project=<PROJECT> ml language list-voices --filter="languageCodes=el-GR"`. Pick a `Chirp3-HD` variant for best quality.                                                     | `el-GR-Chirp3-HD-Aoede`                                 |
+| `VOICE_BRIDGE_TTS_VOICE_EN`         | TTS voice name for English replies.                                                                                                                                                                                            | Same as above, filter on `en-US`.                                                                                                                                                               | `en-US-Chirp3-HD-Aoede`                                 |
+| `VOICE_BRIDGE_MAX_AUDIO_SECONDS`    | Cap on synthesised voice-note duration before truncation. Replies above this are sent as full text + a truncated voice note ending with a "see text above" tail.                                                               | Tune for your listening preference. 60 s is reasonable for driving — long enough to be useful, short enough to absorb.                                                                          | `60`                                                    |
+| `VOICE_BRIDGE_REJECT_ABOVE_SECONDS` | Inbound voice-note rejection threshold (safety net against accidentally sending megabyte voice notes). Cloud Speech v2 sync API has its own 60 s hard limit, so values above 60 only matter as a friendly user-facing message. | Recommended: 300 (= 5 minutes). Bridge uses byte size as a proxy.                                                                                                                               | `300`                                                   |
+| `VOICE_BRIDGE_KEEP_AUDIO_FILES`     | If `true`, downloaded inbound voice files and synthesised outbound voice files stay on disk (useful for debugging). If `false`, both are deleted after processing (recommended for privacy). Accepted forms: `true             | false                                                                                                                                                                                           | 1                                                       | 0   | yes | no`. | Set `false` for production, `true` for shakedown. | `false` |
 
 ### Expiry tracking — ADC renewal
 

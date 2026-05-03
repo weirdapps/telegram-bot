@@ -16,7 +16,10 @@ let statePath: string;
 let store: StateStore;
 
 beforeEach(async () => {
-  statePath = join(tmpdir(), `bridge-state-${Date.now()}-${Math.random().toString(36).slice(2)}.json`);
+  statePath = join(
+    tmpdir(),
+    `bridge-state-${Date.now()}-${Math.random().toString(36).slice(2)}.json`,
+  );
   store = new StateStore(statePath);
 });
 
@@ -125,7 +128,11 @@ describe('handleVoiceCommand', () => {
   });
 
   it('preserves sessionId and lastMessageAt when changing mode', async () => {
-    await store.save({ sessionId: 'preserved-session', lastMessageAt: '2026-04-23', voiceMode: 'mirror' });
+    await store.save({
+      sessionId: 'preserved-session',
+      lastMessageAt: '2026-04-23',
+      voiceMode: 'mirror',
+    });
     const { channel } = makeChannelStub();
     await handleVoiceCommand('/voice off', '1', store, channel as any);
     const loaded = await store.load();

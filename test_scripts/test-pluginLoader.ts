@@ -21,10 +21,7 @@ interface HomeSpec {
 
 function buildClaudeHome(spec: HomeSpec): string {
   const home = mkdtempSync(join(tmpdir(), 'pluginLoader-'));
-  writeFileSync(
-    join(home, 'settings.json'),
-    JSON.stringify({ enabledPlugins: spec.enabled }),
-  );
+  writeFileSync(join(home, 'settings.json'), JSON.stringify({ enabledPlugins: spec.enabled }));
   mkdirSync(join(home, 'plugins'), { recursive: true });
   if (!spec.omitInstalledManifest) {
     if (spec.invalidInstalledManifest) {

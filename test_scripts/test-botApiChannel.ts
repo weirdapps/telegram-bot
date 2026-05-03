@@ -14,7 +14,14 @@ describe('BotApiChannel', () => {
     const ch = new BotApiChannel({
       token: 'fake-token',
       tmpDir: '/tmp/test-bot-channel',
-      botFactory: () => ({ api: { sendMessage: sendMessageMock, sendVoice: sendVoiceMock }, on: vi.fn(), start: vi.fn(), stop: vi.fn(), botInfo: undefined } as never),
+      botFactory: () =>
+        ({
+          api: { sendMessage: sendMessageMock, sendVoice: sendVoiceMock },
+          on: vi.fn(),
+          start: vi.fn(),
+          stop: vi.fn(),
+          botInfo: undefined,
+        }) as never,
     });
     expect(ch.name).toBe('bot');
   });
@@ -23,7 +30,14 @@ describe('BotApiChannel', () => {
     const ch = new BotApiChannel({
       token: 'fake-token',
       tmpDir: '/tmp/test-bot-channel',
-      botFactory: () => ({ api: { sendMessage: sendMessageMock, sendVoice: sendVoiceMock }, on: vi.fn(), start: vi.fn(), stop: vi.fn(), botInfo: undefined } as never),
+      botFactory: () =>
+        ({
+          api: { sendMessage: sendMessageMock, sendVoice: sendVoiceMock },
+          on: vi.fn(),
+          start: vi.fn(),
+          stop: vi.fn(),
+          botInfo: undefined,
+        }) as never,
     });
     await ch.sendText('5988833079', 'hello world');
     expect(sendMessageMock).toHaveBeenCalledWith('5988833079', 'hello world');
@@ -33,7 +47,14 @@ describe('BotApiChannel', () => {
     const ch = new BotApiChannel({
       token: 'fake-token',
       tmpDir: '/tmp/test-bot-channel',
-      botFactory: () => ({ api: { sendMessage: sendMessageMock, sendVoice: sendVoiceMock }, on: vi.fn(), start: vi.fn(), stop: vi.fn(), botInfo: undefined } as never),
+      botFactory: () =>
+        ({
+          api: { sendMessage: sendMessageMock, sendVoice: sendVoiceMock },
+          on: vi.fn(),
+          start: vi.fn(),
+          stop: vi.fn(),
+          botInfo: undefined,
+        }) as never,
     });
     const audio = Buffer.from('opusbytes');
     await ch.sendVoice('5988833079', audio, 7);
@@ -47,11 +68,20 @@ describe('BotApiChannel', () => {
 
   it('onText forwards text messages with channel="bot"', () => {
     const handlers: Record<string, (ctx: unknown) => void> = {};
-    const onMock = vi.fn((event: string, handler: (ctx: unknown) => void) => { handlers[event] = handler; });
+    const onMock = vi.fn((event: string, handler: (ctx: unknown) => void) => {
+      handlers[event] = handler;
+    });
     const ch = new BotApiChannel({
       token: 'fake-token',
       tmpDir: '/tmp/test-bot-channel',
-      botFactory: () => ({ api: { sendMessage: sendMessageMock, sendVoice: sendVoiceMock }, on: onMock, start: vi.fn(), stop: vi.fn(), botInfo: undefined } as never),
+      botFactory: () =>
+        ({
+          api: { sendMessage: sendMessageMock, sendVoice: sendVoiceMock },
+          on: onMock,
+          start: vi.fn(),
+          stop: vi.fn(),
+          botInfo: undefined,
+        }) as never,
     });
     const received: unknown[] = [];
     ch.onText((m) => received.push(m));
@@ -60,12 +90,14 @@ describe('BotApiChannel', () => {
       chat: { id: 5988833079 },
       from: { id: 5988833079 },
     });
-    expect(received).toEqual([{
-      channel: 'bot',
-      chatId: '5988833079',
-      senderId: '5988833079',
-      messageId: '42',
-      text: 'hi',
-    }]);
+    expect(received).toEqual([
+      {
+        channel: 'bot',
+        chatId: '5988833079',
+        senderId: '5988833079',
+        messageId: '42',
+        text: 'hi',
+      },
+    ]);
   });
 });

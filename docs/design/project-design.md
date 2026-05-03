@@ -4,6 +4,7 @@
 **Date**: 2026-04-22
 **Phase**: 5 (Designer)
 **Inputs**:
+
 - `docs/design/refined-request-telegram-user-client.md`
 - `docs/design/investigation-telegram-user-client.md`
 - `docs/research/gramjs-media-classification.md`
@@ -110,17 +111,17 @@ A greenfield **TypeScript library** (`telegram-user-client`) with a thin **comma
 
 ## 2. Technology choices & justification
 
-| Concern | Choice | Justification |
-|---|---|---|
-| MTProto client | **GramJS** (`telegram`, pinned `^2.26.22`) | Only pure-JS/TS MTProto client with mature types, high weekly downloads, and already named in the refined spec. No native compile step. (Investigation §1.) |
-| CLI framework | **commander** | Fluent `.requiredOption()` aligns with the "no fallback config defaults" rule. Small, stable, MIT. (Investigation §6.) |
-| Config loader | **dotenv** + hand-rolled typed env getter | `dotenv` loads `.env` at process start; the typed getter throws `ConfigError` on missing values — strictly enforces the no-fallbacks rule. `zod` is not adopted for v1: the 6-key config doesn't justify a schema library, and a hand-rolled helper makes the "throw on missing" behaviour unambiguous. (Investigation §7, ADR-004.) |
-| Logger | **pino** | Structured JSON, very low overhead, built-in `redact` option for the secrets list (apiHash, session, password, phoneCode, phoneNumber). `pino-pretty` is a dev-only dep for TTY rendering. (Investigation §8.) |
-| Dev runner | **tsx** | No build step for development; runs TS directly. Production uses `tsc` → `node dist/cli/index.js`. |
-| Tests | **Vitest** (+ `@vitest/coverage-v8`) | Fast, TS-native, compatible with `test_scripts/` layout. Live-Telegram integration tests are gated behind `TELEGRAM_TEST_LIVE=1` (plan B-14 uses `TELEGRAM_INTEGRATION` — we standardize on `TELEGRAM_TEST_LIVE` going forward; `TELEGRAM_INTEGRATION` is a compatible alias). |
-| Runtime | **Node.js ≥ 20 LTS** | Required by GramJS 2.26.x; modern ESM + `fetch`; LTS window aligns with v1 lifetime. Declared via `engines.node` in `package.json`. |
-| Language | **TypeScript 5.x strict** | `strict`, `noImplicitAny`, `strictNullChecks`, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, `target: ES2022`, `module: NodeNext`. No `any` on the public surface. |
-| Module system | **ESM** (`"type": "module"`) | GramJS supports both; ESM is forward-compatible and aligns with Node 20+ defaults. |
+| Concern        | Choice                                     | Justification                                                                                                                                                                                                                                                                                                                        |
+| -------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| MTProto client | **GramJS** (`telegram`, pinned `^2.26.22`) | Only pure-JS/TS MTProto client with mature types, high weekly downloads, and already named in the refined spec. No native compile step. (Investigation §1.)                                                                                                                                                                          |
+| CLI framework  | **commander**                              | Fluent `.requiredOption()` aligns with the "no fallback config defaults" rule. Small, stable, MIT. (Investigation §6.)                                                                                                                                                                                                               |
+| Config loader  | **dotenv** + hand-rolled typed env getter  | `dotenv` loads `.env` at process start; the typed getter throws `ConfigError` on missing values — strictly enforces the no-fallbacks rule. `zod` is not adopted for v1: the 6-key config doesn't justify a schema library, and a hand-rolled helper makes the "throw on missing" behaviour unambiguous. (Investigation §7, ADR-004.) |
+| Logger         | **pino**                                   | Structured JSON, very low overhead, built-in `redact` option for the secrets list (apiHash, session, password, phoneCode, phoneNumber). `pino-pretty` is a dev-only dep for TTY rendering. (Investigation §8.)                                                                                                                       |
+| Dev runner     | **tsx**                                    | No build step for development; runs TS directly. Production uses `tsc` → `node dist/cli/index.js`.                                                                                                                                                                                                                                   |
+| Tests          | **Vitest** (+ `@vitest/coverage-v8`)       | Fast, TS-native, compatible with `test_scripts/` layout. Live-Telegram integration tests are gated behind `TELEGRAM_TEST_LIVE=1` (plan B-14 uses `TELEGRAM_INTEGRATION` — we standardize on `TELEGRAM_TEST_LIVE` going forward; `TELEGRAM_INTEGRATION` is a compatible alias).                                                       |
+| Runtime        | **Node.js ≥ 20 LTS**                       | Required by GramJS 2.26.x; modern ESM + `fetch`; LTS window aligns with v1 lifetime. Declared via `engines.node` in `package.json`.                                                                                                                                                                                                  |
+| Language       | **TypeScript 5.x strict**                  | `strict`, `noImplicitAny`, `strictNullChecks`, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, `target: ES2022`, `module: NodeNext`. No `any` on the public surface.                                                                                                                                                       |
+| Module system  | **ESM** (`"type": "module"`)               | GramJS supports both; ESM is forward-compatible and aligns with Node 20+ defaults.                                                                                                                                                                                                                                                   |
 
 Rejected: mtcute (pre-1.0 API drift), TDLib (`tdl` — native binding), airgram (unmaintained). See investigation §1 and ADR-001 for full rationale.
 
@@ -214,14 +215,8 @@ export type { TelegramUserClientOptions } from './client/TelegramUserClient';
 export { resolvePeer } from './client/peer';
 export type { PeerInput } from './client/peer';
 
-export {
-  classifyIncoming,
-  downloadIncomingMedia,
-} from './client/media';
-export type {
-  IncomingKind,
-  IncomingMedia,
-} from './client/media';
+export { classifyIncoming, downloadIncomingMedia } from './client/media';
+export type { IncomingKind, IncomingMedia } from './client/media';
 
 export { withFloodRetry } from './client/flood';
 export type { WithFloodRetryOptions } from './client/flood';
@@ -316,14 +311,14 @@ export function requireEnv(name: RequiredEnvVar | string): string;
 
 **Required env var list (normative):**
 
-| Name | Required | Purpose | Example |
-|---|---|---|---|
-| `TELEGRAM_API_ID` | Yes | MTProto app ID (integer). | `123456` |
-| `TELEGRAM_API_HASH` | Yes | MTProto app hash (32-char hex). | `0123abcd…` |
-| `TELEGRAM_PHONE_NUMBER` | Yes | International phone, with leading `+`. | `+306900000000` |
-| `TELEGRAM_SESSION_PATH` | Yes | Absolute file path where StringSession is saved. | `/Users/me/.telegram/session.txt` |
-| `TELEGRAM_DOWNLOAD_DIR` | Yes | Absolute directory for incoming media (auto-created). | `/Users/me/.telegram/downloads` |
-| `TELEGRAM_LOG_LEVEL` | Yes | One of `trace|debug|info|warn|error|silent`. | `info` |
+| Name                    | Required | Purpose                                               | Example                           |
+| ----------------------- | -------- | ----------------------------------------------------- | --------------------------------- | ---- | ---- | ----- | -------- | ------ |
+| `TELEGRAM_API_ID`       | Yes      | MTProto app ID (integer).                             | `123456`                          |
+| `TELEGRAM_API_HASH`     | Yes      | MTProto app hash (32-char hex).                       | `0123abcd…`                       |
+| `TELEGRAM_PHONE_NUMBER` | Yes      | International phone, with leading `+`.                | `+306900000000`                   |
+| `TELEGRAM_SESSION_PATH` | Yes      | Absolute file path where StringSession is saved.      | `/Users/me/.telegram/session.txt` |
+| `TELEGRAM_DOWNLOAD_DIR` | Yes      | Absolute directory for incoming media (auto-created). | `/Users/me/.telegram/downloads`   |
+| `TELEGRAM_LOG_LEVEL`    | Yes      | One of `trace                                         | debug                             | info | warn | error | silent`. | `info` |
 
 A missing required var throws `ConfigError('<VAR_NAME> is not set')`. **No defaults for required vars.**
 
@@ -594,10 +589,7 @@ export interface WithFloodRetryOptions {
  * configure to 5 s on the TelegramClient). The library handles 0–5 s floods
  * silently; this wrapper handles 6–60 s; anything larger surfaces upstream.
  */
-export function withFloodRetry<T>(
-  fn: () => Promise<T>,
-  opts?: WithFloodRetryOptions,
-): Promise<T>;
+export function withFloodRetry<T>(fn: () => Promise<T>, opts?: WithFloodRetryOptions): Promise<T>;
 ```
 
 ### 4.9 Shutdown — `src/client/shutdown.ts`
@@ -627,10 +619,7 @@ import type { TelegramUserClient } from './TelegramUserClient';
  *
  * Returns an uninstaller that removes the signal handlers (useful for tests).
  */
-export function installGracefulShutdown(
-  client: TelegramUserClient,
-  logger: Logger,
-): () => void;
+export function installGracefulShutdown(client: TelegramUserClient, logger: Logger): () => void;
 ```
 
 ### 4.10 Events types — `src/client/events.ts`
@@ -867,14 +856,14 @@ export class TelegramUserClient {
 
 ## 5. Configuration contract
 
-| Variable | Type | Required | Purpose | How obtained | Example |
-|---|---|---|---|---|---|
-| `TELEGRAM_API_ID` | integer (positive) | **Yes** | Identifies this application to MTProto. | Create an app at https://my.telegram.org → "API development tools". | `123456` |
-| `TELEGRAM_API_HASH` | string (32-char hex) | **Yes** | Paired with `TELEGRAM_API_ID`. Treat as a secret. | Same page as above. | `0123456789abcdef0123456789abcdef` |
-| `TELEGRAM_PHONE_NUMBER` | string (international phone, leading `+`) | **Yes** | The user's own phone number. Used during login. | User's own phone. | `+306900000000` |
-| `TELEGRAM_SESSION_PATH` | absolute path | **Yes** | Where the serialized `StringSession` is persisted after login. The file is equivalent to a password. | Operator chooses; `chmod 0600`. | `/Users/me/.telegram/session.txt` |
-| `TELEGRAM_DOWNLOAD_DIR` | absolute path | **Yes** | Directory for incoming media (photo/voice/audio). Created on startup if missing. | Operator chooses. | `/Users/me/.telegram/downloads` |
-| `TELEGRAM_LOG_LEVEL` | `trace \| debug \| info \| warn \| error \| silent` | **Yes** | pino log verbosity. | Operator chooses. | `info` |
+| Variable                | Type                                                | Required | Purpose                                                                                              | How obtained                                                        | Example                            |
+| ----------------------- | --------------------------------------------------- | -------- | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- | ---------------------------------- |
+| `TELEGRAM_API_ID`       | integer (positive)                                  | **Yes**  | Identifies this application to MTProto.                                                              | Create an app at https://my.telegram.org → "API development tools". | `123456`                           |
+| `TELEGRAM_API_HASH`     | string (32-char hex)                                | **Yes**  | Paired with `TELEGRAM_API_ID`. Treat as a secret.                                                    | Same page as above.                                                 | `0123456789abcdef0123456789abcdef` |
+| `TELEGRAM_PHONE_NUMBER` | string (international phone, leading `+`)           | **Yes**  | The user's own phone number. Used during login.                                                      | User's own phone.                                                   | `+306900000000`                    |
+| `TELEGRAM_SESSION_PATH` | absolute path                                       | **Yes**  | Where the serialized `StringSession` is persisted after login. The file is equivalent to a password. | Operator chooses; `chmod 0600`.                                     | `/Users/me/.telegram/session.txt`  |
+| `TELEGRAM_DOWNLOAD_DIR` | absolute path                                       | **Yes**  | Directory for incoming media (photo/voice/audio). Created on startup if missing.                     | Operator chooses.                                                   | `/Users/me/.telegram/downloads`    |
+| `TELEGRAM_LOG_LEVEL`    | `trace \| debug \| info \| warn \| error \| silent` | **Yes**  | pino log verbosity.                                                                                  | Operator chooses.                                                   | `info`                             |
 
 **No defaults.** A missing or empty required var triggers `ConfigError('<VAR_NAME> is not set', '<VAR_NAME>')`. Validation happens once in `loadConfig()` at process start, before any GramJS import path runs (F-036).
 
@@ -886,13 +875,13 @@ export class TelegramUserClient {
 
 All domain errors live in `src/errors.ts` and are re-exported from `src/index.ts`. GramJS's `FloodWaitError` is re-exported **from the library barrel** (not from `errors.ts`) so it remains explicitly tied to GramJS.
 
-| Class | Thrown when | Caller should |
-|---|---|---|
-| `ConfigError` | `loadConfig()` finds any required env var missing/empty or invalid (non-numeric `apiId`, relative path, unknown log level). | Fix the env and re-run. Message names the offending variable. |
-| `PeerNotFoundError` | `resolvePeer()` exhausts `username → phone → id` without success. | Verify the recipient exists and the sender has permission to DM them. |
-| `UnsupportedMediaError` | **Reserved** for future strict modes. NOT thrown in v1. | n/a in v1. |
-| `LoginRequiredError` | `connect()` sees a missing/corrupted/revoked session; `sendText/sendImage/sendDocument/startListening` is called before a valid connect. | Run `login` subcommand (or call `.login()` programmatically). |
-| `FloodWaitError` (re-exported from `telegram/errors`) | `withFloodRetry` sees `.seconds > maxAutoWaitSeconds` (default 60). | Back off and retry after `.seconds`. |
+| Class                                                 | Thrown when                                                                                                                              | Caller should                                                         |
+| ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| `ConfigError`                                         | `loadConfig()` finds any required env var missing/empty or invalid (non-numeric `apiId`, relative path, unknown log level).              | Fix the env and re-run. Message names the offending variable.         |
+| `PeerNotFoundError`                                   | `resolvePeer()` exhausts `username → phone → id` without success.                                                                        | Verify the recipient exists and the sender has permission to DM them. |
+| `UnsupportedMediaError`                               | **Reserved** for future strict modes. NOT thrown in v1.                                                                                  | n/a in v1.                                                            |
+| `LoginRequiredError`                                  | `connect()` sees a missing/corrupted/revoked session; `sendText/sendImage/sendDocument/startListening` is called before a valid connect. | Run `login` subcommand (or call `.login()` programmatically).         |
+| `FloodWaitError` (re-exported from `telegram/errors`) | `withFloodRetry` sees `.seconds > maxAutoWaitSeconds` (default 60).                                                                      | Back off and retry after `.seconds`.                                  |
 
 Standard Node errors (`ENOENT` on missing files, etc.) are passed through unmodified from `fs.stat` in `sendImage/sendDocument`. This keeps the taxonomy small.
 
@@ -1047,7 +1036,7 @@ client.disconnect()  → exit 0
   - `password`
   - `phoneCode`
   - `phoneNumber` (pre-redact to last-3 via `redactPhoneNumber()` helper before logging — pino `redact` only censors; it does not transform)
-  Censor token: `"[REDACTED]"`.
+    Censor token: `"[REDACTED]"`.
 - **Named event catalog** (each must appear at least once in the code paths it describes — F-039):
   - `config_loaded`
   - `login_started`, `login_completed`, `logout`
@@ -1068,17 +1057,17 @@ client.disconnect()  → exit 0
 
 ### 10.1 Unit tests (always run)
 
-| File | Target | Assertions |
-|---|---|---|
-| `test-config.ts` | `loadConfig()`, `requireEnv()` | Each required var individually unset throws `ConfigError` with the right `.variable`; invalid `apiId`, relative session path, unknown log level all throw; fully valid env returns the expected shape. Uses `vi.stubEnv`/`vi.unstubAllEnvs`. |
-| `test-session-store.ts` | `SessionStore` | Write → read round-trip in `os.tmpdir()`; delete removes file; read of missing file returns `null`; post-write mode is `0o600` (via `fs.statSync`). |
-| `test-logger.ts` | `createLogger`, `redactPhoneNumber` | Phone masking keeps last 3 digits; log output through a captured stream contains `"[REDACTED]"` for every redact path. |
-| `test-media-classify.ts` | `classifyIncoming` | Fabricated `Api.Message` mocks for each row of the media/kind/extension table: photo, photo-as-document, voice, audio (with filename), audio (no filename), sticker, GIF, video, video-note, generic PDF document, plain text, empty service. Each asserts `{ kind, fileName?, document? }` matches expectation. |
-| `test-flood-retry.ts` | `withFloodRetry` | Mocks `fn` that throws a synthetic `FloodWaitError` with configurable `.seconds`. Uses `vi.useFakeTimers`. Asserts: (1) `seconds=5` → retry after ~6 s → success; (2) `seconds=120` → re-throw; (3) `maxAutoWaitSeconds=0` → re-throw on any flood; (4) non-flood error propagates untouched. |
-| `test-peer-resolver.ts` | `resolvePeer` | Injects a stub `TelegramClient` whose `getEntity` records call order. Asserts: `@name` path, `+phone` path, digits-only path, all-fail → `PeerNotFoundError`, cache hit on second call returns without calling `getEntity`. |
-| `test-client-api-shape.ts` | `TelegramUserClient` prototype | `typeof` + arity checks on `connect`, `login`, `disconnect`, `getSessionString`, `sendText`, `sendImage`, `sendDocument`, `on`, `off`, `startListening`, `stopListening`. Does NOT instantiate or network. |
-| `test-filename-convention.ts` | `buildFilename` (internal to `media.ts`; exported for testing) | Pattern `^[0-9T:-]+Z_-?\d+_\d+_(text|photo|voice|audio|document|other)\.[a-z0-9]+$` minus `:`/`.` in timestamp. |
-| `test-cli-wiring.ts` | CLI entry | Spawns compiled CLI (`node dist/cli/index.js`): `--help` mentions all 6 subcommands; `send-text --help` lists `--to` and `--text` required; `send-text` with no args exits non-zero and stderr mentions "required"; `send-text --to foo --text bar` with no env set exits non-zero and stderr mentions `ConfigError`. |
+| File                          | Target                                                         | Assertions                                                                                                                                                                                                                                                                                                            |
+| ----------------------------- | -------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----- | ----- | ----- | -------- | --------------------------------------------- |
+| `test-config.ts`              | `loadConfig()`, `requireEnv()`                                 | Each required var individually unset throws `ConfigError` with the right `.variable`; invalid `apiId`, relative session path, unknown log level all throw; fully valid env returns the expected shape. Uses `vi.stubEnv`/`vi.unstubAllEnvs`.                                                                          |
+| `test-session-store.ts`       | `SessionStore`                                                 | Write → read round-trip in `os.tmpdir()`; delete removes file; read of missing file returns `null`; post-write mode is `0o600` (via `fs.statSync`).                                                                                                                                                                   |
+| `test-logger.ts`              | `createLogger`, `redactPhoneNumber`                            | Phone masking keeps last 3 digits; log output through a captured stream contains `"[REDACTED]"` for every redact path.                                                                                                                                                                                                |
+| `test-media-classify.ts`      | `classifyIncoming`                                             | Fabricated `Api.Message` mocks for each row of the media/kind/extension table: photo, photo-as-document, voice, audio (with filename), audio (no filename), sticker, GIF, video, video-note, generic PDF document, plain text, empty service. Each asserts `{ kind, fileName?, document? }` matches expectation.      |
+| `test-flood-retry.ts`         | `withFloodRetry`                                               | Mocks `fn` that throws a synthetic `FloodWaitError` with configurable `.seconds`. Uses `vi.useFakeTimers`. Asserts: (1) `seconds=5` → retry after ~6 s → success; (2) `seconds=120` → re-throw; (3) `maxAutoWaitSeconds=0` → re-throw on any flood; (4) non-flood error propagates untouched.                         |
+| `test-peer-resolver.ts`       | `resolvePeer`                                                  | Injects a stub `TelegramClient` whose `getEntity` records call order. Asserts: `@name` path, `+phone` path, digits-only path, all-fail → `PeerNotFoundError`, cache hit on second call returns without calling `getEntity`.                                                                                           |
+| `test-client-api-shape.ts`    | `TelegramUserClient` prototype                                 | `typeof` + arity checks on `connect`, `login`, `disconnect`, `getSessionString`, `sendText`, `sendImage`, `sendDocument`, `on`, `off`, `startListening`, `stopListening`. Does NOT instantiate or network.                                                                                                            |
+| `test-filename-convention.ts` | `buildFilename` (internal to `media.ts`; exported for testing) | Pattern `^[0-9T:-]+Z*-?\d+*\d+\_(text                                                                                                                                                                                                                                                                                 | photo | voice | audio | document | other)\.[a-z0-9]+$`minus`:`/`.` in timestamp. |
+| `test-cli-wiring.ts`          | CLI entry                                                      | Spawns compiled CLI (`node dist/cli/index.js`): `--help` mentions all 6 subcommands; `send-text --help` lists `--to` and `--text` required; `send-text` with no args exits non-zero and stderr mentions "required"; `send-text --to foo --text bar` with no env set exits non-zero and stderr mentions `ConfigError`. |
 
 ### 10.2 Integration tests (opt-in)
 
@@ -1095,7 +1084,8 @@ Object.assign(voiceDoc, {
   mimeType: 'audio/ogg',
   attributes: [
     Object.assign(Object.create(Api.DocumentAttributeAudio.prototype), {
-      voice: true, duration: 3,
+      voice: true,
+      duration: 3,
     }),
   ],
 });
@@ -1261,40 +1251,40 @@ Each ADR records a choice that materially shapes the code. Future changes requir
 
 ## 13. Additional risks (beyond ADRs)
 
-| # | Risk | Mitigation |
-|---|---|---|
-| R-α | Repeated `contacts.ResolveUsername` calls trigger multi-hour FLOOD_WAIT. | `resolvePeer` caches resolutions in-memory for the process lifetime. |
-| R-β | `StringSession` file leaked from disk → account takeover. | `chmod 0600` on write; README security notes; tracked for at-rest encryption (OOS-13). |
-| R-γ | Coder A and Coder B drift on contract types during Phase 6. | §4 signatures are binding; §11 contact surface is explicit; reviewer agent verifies in Phase 7. |
-| R-δ | GramJS version pinned to `^2.26.22`; a future minor may break defaults. | `package.json` uses caret pin; CI matrix can add a floor. Pending-item to monitor release notes. |
-| R-ε | `bigint` IDs are not JSON-serializable by default. | `listen` CLI uses a JSON replacer that emits bigints as decimal strings. |
+| #   | Risk                                                                     | Mitigation                                                                                       |
+| --- | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------ |
+| R-α | Repeated `contacts.ResolveUsername` calls trigger multi-hour FLOOD_WAIT. | `resolvePeer` caches resolutions in-memory for the process lifetime.                             |
+| R-β | `StringSession` file leaked from disk → account takeover.                | `chmod 0600` on write; README security notes; tracked for at-rest encryption (OOS-13).           |
+| R-γ | Coder A and Coder B drift on contract types during Phase 6.              | §4 signatures are binding; §11 contact surface is explicit; reviewer agent verifies in Phase 7.  |
+| R-δ | GramJS version pinned to `^2.26.22`; a future minor may break defaults.  | `package.json` uses caret pin; CI matrix can add a floor. Pending-item to monitor release notes. |
+| R-ε | `bigint` IDs are not JSON-serializable by default.                       | `listen` CLI uses a JSON replacer that emits bigints as decimal strings.                         |
 
 ---
 
 ## 14. Traceability to functional requirements
 
-| F-ID | File(s) realizing it |
-|---|---|
+| F-ID                       | File(s) realizing it                                                                         |
+| -------------------------- | -------------------------------------------------------------------------------------------- |
 | F-001, F-002, F-003, F-004 | `src/client/TelegramUserClient.ts` (login / logout / connect), `src/config/session-store.ts` |
-| F-005, F-006, F-007 | `src/client/peer.ts` |
-| F-008 | `src/client/TelegramUserClient.ts` (`sendText`) |
-| F-009 | `src/client/TelegramUserClient.ts` (`sendImage`) |
-| F-010 | `src/client/TelegramUserClient.ts` (`sendDocument`) |
-| F-011 | `src/client/TelegramUserClient.ts` (pre-upload `fs.stat`) |
-| F-012, F-013 | `src/client/TelegramUserClient.ts` (startListening + dispatch) |
-| F-014, F-015, F-016 | `src/client/media.ts` (`classifyIncoming` + `downloadIncomingMedia`) |
-| F-017 | `src/client/media.ts` (`buildFilename`); `test-filename-convention.ts` |
-| F-018 | `src/client/media.ts` (mkdir recursive) |
-| F-019 | `src/client/media.ts` (classify → "other"/"document" + no download) |
-| F-020 | `src/client/buildClient.ts` (`autoReconnect: true`, `reconnectRetries: Infinity`) |
-| F-021 | `src/client/shutdown.ts`, `src/client/TelegramUserClient.ts` (`disconnect`) |
-| F-022, F-023, F-024 | `src/client/TelegramUserClient.ts`, `src/client/events.ts`, `src/errors.ts`, `src/index.ts` |
-| F-025..F-030 | `src/cli/commands/*` + `src/cli/index.ts` |
-| F-031, F-032, F-033 | `src/logger/logger.ts` + `createLogger` redact paths |
-| F-034, F-035, F-036 | `src/config/config.ts` |
-| F-037, F-038 | `src/client/flood.ts` (`withFloodRetry`) |
-| F-039 | distributed across `src/**` — see log event catalog (§9) |
-| F-040..F-043 | `package.json`, `tsconfig.json` |
+| F-005, F-006, F-007        | `src/client/peer.ts`                                                                         |
+| F-008                      | `src/client/TelegramUserClient.ts` (`sendText`)                                              |
+| F-009                      | `src/client/TelegramUserClient.ts` (`sendImage`)                                             |
+| F-010                      | `src/client/TelegramUserClient.ts` (`sendDocument`)                                          |
+| F-011                      | `src/client/TelegramUserClient.ts` (pre-upload `fs.stat`)                                    |
+| F-012, F-013               | `src/client/TelegramUserClient.ts` (startListening + dispatch)                               |
+| F-014, F-015, F-016        | `src/client/media.ts` (`classifyIncoming` + `downloadIncomingMedia`)                         |
+| F-017                      | `src/client/media.ts` (`buildFilename`); `test-filename-convention.ts`                       |
+| F-018                      | `src/client/media.ts` (mkdir recursive)                                                      |
+| F-019                      | `src/client/media.ts` (classify → "other"/"document" + no download)                          |
+| F-020                      | `src/client/buildClient.ts` (`autoReconnect: true`, `reconnectRetries: Infinity`)            |
+| F-021                      | `src/client/shutdown.ts`, `src/client/TelegramUserClient.ts` (`disconnect`)                  |
+| F-022, F-023, F-024        | `src/client/TelegramUserClient.ts`, `src/client/events.ts`, `src/errors.ts`, `src/index.ts`  |
+| F-025..F-030               | `src/cli/commands/*` + `src/cli/index.ts`                                                    |
+| F-031, F-032, F-033        | `src/logger/logger.ts` + `createLogger` redact paths                                         |
+| F-034, F-035, F-036        | `src/config/config.ts`                                                                       |
+| F-037, F-038               | `src/client/flood.ts` (`withFloodRetry`)                                                     |
+| F-039                      | distributed across `src/**` — see log event catalog (§9)                                     |
+| F-040..F-043               | `package.json`, `tsconfig.json`                                                              |
 
 ---
 
@@ -1320,13 +1310,13 @@ A bidirectional voice channel was added on top of the existing text-only bridge.
 
 Summary of additions to the master design:
 
-| Area | Addition |
-|---|---|
-| §3 Repository layout | `bridge/src/stt/google.ts`, `bridge/src/tts/google.ts`, `bridge/src/replyRouter.ts`, `bridge/src/voiceMode.ts`, `bridge/src/voiceBridgeConfig.ts` |
-| §4 Public API | `TelegramUserClient.sendVoice(peer, audio: Buffer, duration: number, caption?)` — closes Pending Item #5 |
-| §5 Configuration | 7 new env vars: `GOOGLE_APPLICATION_CREDENTIALS`, `GOOGLE_CLOUD_PROJECT`, `VOICE_BRIDGE_TTS_VOICE_EL`, `VOICE_BRIDGE_TTS_VOICE_EN`, `VOICE_BRIDGE_MAX_AUDIO_SECONDS`, `VOICE_BRIDGE_REJECT_ABOVE_SECONDS`, `VOICE_BRIDGE_KEEP_AUDIO_FILES` |
-| §6 Error taxonomy | `VoiceBridgeConfigError`, `TranscriptionError`, `SynthesisError` |
-| §10 Testing | `test_scripts/test-replyRouter.ts` (20 cases, pure function), `test_scripts/test-voiceMode.ts` (11 cases, state + slash command); existing 96 tests still pass |
-| §12 ADRs | ADR-010 (sync STT, not streaming), ADR-011 (single voice per reply), ADR-012 (truncate-with-text-first, not split), ADR-013 (voiceMode in StateStore not env), ADR-014 (no local fallback engine) |
+| Area                 | Addition                                                                                                                                                                                                                                   |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| §3 Repository layout | `bridge/src/stt/google.ts`, `bridge/src/tts/google.ts`, `bridge/src/replyRouter.ts`, `bridge/src/voiceMode.ts`, `bridge/src/voiceBridgeConfig.ts`                                                                                          |
+| §4 Public API        | `TelegramUserClient.sendVoice(peer, audio: Buffer, duration: number, caption?)` — closes Pending Item #5                                                                                                                                   |
+| §5 Configuration     | 7 new env vars: `GOOGLE_APPLICATION_CREDENTIALS`, `GOOGLE_CLOUD_PROJECT`, `VOICE_BRIDGE_TTS_VOICE_EL`, `VOICE_BRIDGE_TTS_VOICE_EN`, `VOICE_BRIDGE_MAX_AUDIO_SECONDS`, `VOICE_BRIDGE_REJECT_ABOVE_SECONDS`, `VOICE_BRIDGE_KEEP_AUDIO_FILES` |
+| §6 Error taxonomy    | `VoiceBridgeConfigError`, `TranscriptionError`, `SynthesisError`                                                                                                                                                                           |
+| §10 Testing          | `test_scripts/test-replyRouter.ts` (20 cases, pure function), `test_scripts/test-voiceMode.ts` (11 cases, state + slash command); existing 96 tests still pass                                                                             |
+| §12 ADRs             | ADR-010 (sync STT, not streaming), ADR-011 (single voice per reply), ADR-012 (truncate-with-text-first, not split), ADR-013 (voiceMode in StateStore not env), ADR-014 (no local fallback engine)                                          |
 
 End of `project-design.md`.

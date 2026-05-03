@@ -1,7 +1,4 @@
-import type {
-  CanUseTool,
-  PermissionMode,
-} from '@anthropic-ai/claude-agent-sdk';
+import type { CanUseTool, PermissionMode } from '@anthropic-ai/claude-agent-sdk';
 
 /**
  * ====================================================================
@@ -53,8 +50,16 @@ export const canUseTool: CanUseTool = async (toolName, input) => {
 
   if (ALLOW.has(toolName)) return { behavior: 'allow', updatedInput: input };
   if (DENY.has(toolName)) {
-    return { behavior: 'deny', message: `${toolName} is blocked from the Telegram bridge.`, interrupt: false };
+    return {
+      behavior: 'deny',
+      message: `${toolName} is blocked from the Telegram bridge.`,
+      interrupt: false,
+    };
   }
   // Default-deny posture: anything not explicitly allowed is rejected.
-  return { behavior: 'deny', message: `${toolName} is not in the bridge allowlist.`, interrupt: false };
+  return {
+    behavior: 'deny',
+    message: `${toolName} is not in the bridge allowlist.`,
+    interrupt: false,
+  };
 };

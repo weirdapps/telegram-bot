@@ -15,10 +15,7 @@ import { listenCommand } from './commands/listen.js';
 
 const program = new Command();
 
-program
-  .name('telegram-tool')
-  .description('Telegram user-account CLI (MTProto)')
-  .version('0.1.0');
+program.name('telegram-tool').description('Telegram user-account CLI (MTProto)').version('0.1.0');
 
 program.addCommand(loginCommand());
 program.addCommand(logoutCommand());

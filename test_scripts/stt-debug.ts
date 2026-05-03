@@ -43,11 +43,17 @@ async function main() {
     console.error('    FAIL code:   ', err.code);
     console.error('    FAIL details:', err.details);
     console.error('    FAIL statusDetails:', JSON.stringify(err.statusDetails, null, 2));
-    console.error('    FAIL fieldViolations:', JSON.stringify(err.statusDetails?.[0]?.fieldViolations, null, 2));
+    console.error(
+      '    FAIL fieldViolations:',
+      JSON.stringify(err.statusDetails?.[0]?.fieldViolations, null, 2),
+    );
   } finally {
     speech.close();
     tts.close();
   }
 }
 
-main().catch(e => { console.error('UNHANDLED:', e); process.exit(2); });
+main().catch((e) => {
+  console.error('UNHANDLED:', e);
+  process.exit(2);
+});

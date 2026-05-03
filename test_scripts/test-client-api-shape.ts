@@ -39,10 +39,7 @@ describe('TelegramUserClient — public API surface', () => {
 
   for (const m of methods) {
     test(`prototype has method "${m.name}" with arity ${m.arity}`, () => {
-      const proto = TelegramUserClient.prototype as unknown as Record<
-        string,
-        unknown
-      >;
+      const proto = TelegramUserClient.prototype as unknown as Record<string, unknown>;
       const fn = proto[m.name];
       expect(typeof fn).toBe('function');
       expect((fn as (...args: unknown[]) => unknown).length).toBe(m.arity);

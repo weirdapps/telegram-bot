@@ -7,9 +7,7 @@
 // Why: TTS engines read literal "**" as "αστερίσκος αστερίσκος", "##" as
 // "δίεση δίεση", "|" as "vertical bar", which makes voice replies useless.
 
-const TRUNCATION_TAIL_PATTERNS = [
-  /…\s*(see|δες)[\s\S]+/gi,
-];
+const TRUNCATION_TAIL_PATTERNS = [/…\s*(see|δες)[\s\S]+/gi];
 
 /**
  * Strip markdown formatting and structural symbols so the result reads

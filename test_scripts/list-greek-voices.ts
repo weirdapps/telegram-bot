@@ -11,12 +11,17 @@ async function main(): Promise<void> {
   const groups: Record<string, string[]> = {};
   for (const v of voices) {
     const name = v.name ?? '';
-    const family = name.includes('Chirp3-HD') ? 'Chirp3-HD'
-      : name.includes('Chirp-HD') ? 'Chirp-HD'
-      : name.includes('Studio') ? 'Studio'
-      : name.includes('Neural2') ? 'Neural2'
-      : name.includes('Wavenet') ? 'Wavenet'
-      : 'Standard';
+    const family = name.includes('Chirp3-HD')
+      ? 'Chirp3-HD'
+      : name.includes('Chirp-HD')
+        ? 'Chirp-HD'
+        : name.includes('Studio')
+          ? 'Studio'
+          : name.includes('Neural2')
+            ? 'Neural2'
+            : name.includes('Wavenet')
+              ? 'Wavenet'
+              : 'Standard';
     const gender = (v.ssmlGender ?? '?').toString().toLowerCase();
     (groups[family] ??= []).push(`${name} (${gender})`);
   }
@@ -28,4 +33,7 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch(err => { console.error(err); process.exit(1); });
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

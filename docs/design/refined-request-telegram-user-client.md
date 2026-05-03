@@ -81,7 +81,7 @@ Build a TypeScript-based Telegram client that logs into Telegram **as the end us
 
 - Telegram **Bot API** mode (explicitly rejected by the user).
 - **Groups and channels** (both sending and receiving). The design must leave room to add them later; it must not bake in "private chat only" assumptions at the type level.
-- **Outgoing voice / audio messages.** The user only asked to *receive* audio — outgoing audio is assumed out of scope (see §8, Open Questions).
+- **Outgoing voice / audio messages.** The user only asked to _receive_ audio — outgoing audio is assumed out of scope (see §8, Open Questions).
 - **Outgoing video** and video notes.
 - **End-to-end encrypted "secret chats."**
 - **Multi-account support** (one `TELEGRAM_PHONE_NUMBER` per process/session).
@@ -95,18 +95,18 @@ Build a TypeScript-based Telegram client that logs into Telegram **as the end us
 
 All values are read from environment variables. Missing any required value must raise `ConfigurationError`. No defaults, no fallbacks.
 
-| Variable | Required | Purpose | How to obtain | Expires? | Recommended storage |
-|---|---|---|---|---|---|
-| `TELEGRAM_API_ID` | yes | MTProto app ID identifying this client application to Telegram. | Create an app at <https://my.telegram.org> → "API development tools". | No (tied to the dev app, not the user session). | `.env` file git-ignored; for deployment, a secret manager. |
-| `TELEGRAM_API_HASH` | yes | MTProto app hash paired with the API ID. | Same page as above. | No. | Same as `TELEGRAM_API_ID`. Treat as a secret. |
-| `TELEGRAM_PHONE_NUMBER` | yes | The user's Telegram phone number in international format (e.g. `+306900000000`). Used during the `login` flow. | The user's own phone number. | No. | `.env` (not a secret on its own, but PII — keep out of VCS). |
-| `TELEGRAM_SESSION_PATH` | yes | Absolute filesystem path where the GramJS `StringSession` is persisted after successful login. | User-chosen. | The stored session can be invalidated server-side by Telegram (e.g. after long inactivity, explicit logout elsewhere, or password change). | A path inside the user's home directory with `0600` permissions. The file itself is a secret (it grants full account access) and must never be committed. |
-| `TELEGRAM_DOWNLOAD_DIR` | yes | Directory where incoming images, voice, and audio are saved. | User-chosen. | No. | A writable local path; created on startup if missing. |
-| `TELEGRAM_LOG_LEVEL` | no (but no silent default — see note) | Sets the log verbosity. Allowed values: `error`, `warn`, `info`, `debug`. | User-chosen. | No. | `.env`. |
+| Variable                | Required                              | Purpose                                                                                                        | How to obtain                                                         | Expires?                                                                                                                                   | Recommended storage                                                                                                                                       |
+| ----------------------- | ------------------------------------- | -------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `TELEGRAM_API_ID`       | yes                                   | MTProto app ID identifying this client application to Telegram.                                                | Create an app at <https://my.telegram.org> → "API development tools". | No (tied to the dev app, not the user session).                                                                                            | `.env` file git-ignored; for deployment, a secret manager.                                                                                                |
+| `TELEGRAM_API_HASH`     | yes                                   | MTProto app hash paired with the API ID.                                                                       | Same page as above.                                                   | No.                                                                                                                                        | Same as `TELEGRAM_API_ID`. Treat as a secret.                                                                                                             |
+| `TELEGRAM_PHONE_NUMBER` | yes                                   | The user's Telegram phone number in international format (e.g. `+306900000000`). Used during the `login` flow. | The user's own phone number.                                          | No.                                                                                                                                        | `.env` (not a secret on its own, but PII — keep out of VCS).                                                                                              |
+| `TELEGRAM_SESSION_PATH` | yes                                   | Absolute filesystem path where the GramJS `StringSession` is persisted after successful login.                 | User-chosen.                                                          | The stored session can be invalidated server-side by Telegram (e.g. after long inactivity, explicit logout elsewhere, or password change). | A path inside the user's home directory with `0600` permissions. The file itself is a secret (it grants full account access) and must never be committed. |
+| `TELEGRAM_DOWNLOAD_DIR` | yes                                   | Directory where incoming images, voice, and audio are saved.                                                   | User-chosen.                                                          | No.                                                                                                                                        | A writable local path; created on startup if missing.                                                                                                     |
+| `TELEGRAM_LOG_LEVEL`    | no (but no silent default — see note) | Sets the log verbosity. Allowed values: `error`, `warn`, `info`, `debug`.                                      | User-chosen.                                                          | No.                                                                                                                                        | `.env`.                                                                                                                                                   |
 
 **Note on "optional" per CLAUDE.md.** CLAUDE.md forbids fallback values for configuration. To stay compliant, `TELEGRAM_LOG_LEVEL` is treated as **required** with no default — if unset, the library raises `ConfigurationError`. If the user wants a "convenience default," that must be explicitly requested and recorded as an exception per the CLAUDE.md rule.
 
-**Expiration tracking.** `TELEGRAM_API_ID`/`TELEGRAM_API_HASH` do not expire. However, `TELEGRAM_SESSION_PATH` points to a session that *can* be invalidated out-of-band. The library must detect this at connect time and raise a clear re-login error; a proactive expiration date is not applicable.
+**Expiration tracking.** `TELEGRAM_API_ID`/`TELEGRAM_API_HASH` do not expire. However, `TELEGRAM_SESSION_PATH` points to a session that _can_ be invalidated out-of-band. The library must detect this at connect time and raise a clear re-login error; a proactive expiration date is not applicable.
 
 ## 6. Non-Functional Requirements
 
@@ -146,24 +146,24 @@ The Integration Verifier will declare v1 done when all of the following are demo
 
 The following decisions are being made on the user's behalf; each should be sanity-checked before or during implementation.
 
-1. **MTProto library = GramJS (`telegram` on npm).** Actively maintained, idiomatic TypeScript, supports the full User API. TDLib via a native binding is the heavier alternative and is **not** chosen for v1. *Confirm GramJS is acceptable.*
-2. **Session storage = `StringSession` written to a plain file at `TELEGRAM_SESSION_PATH`.** Permissions are set to `0600`. Encrypting the session at rest (e.g. with a passphrase-derived key) is explicitly deferred as a future hardening step. *Confirm plain file is acceptable for v1.*
-3. **Recipient resolution order = username → phone → numeric ID**, with the caller able to force a specific kind if desired. *Confirm the default order.*
-4. **Outgoing audio is NOT in scope for v1.** The user's raw request mentioned "getting back" audio (i.e. receiving), not sending. This is treated as receive-only. *Confirm.*
-5. **"Long polling" is implemented as a persistent GramJS connection with `NewMessage` event handlers.** The literal Bot API `getUpdates` concept does not apply to MTProto; this is the User-API equivalent. *Confirm this interpretation.*
-6. **`TELEGRAM_LOG_LEVEL` is required (no default) to comply with the CLAUDE.md no-fallback rule.** If the user wants a default of `info`, that must be registered as an explicit exception in the project's memory file before implementation. *Confirm.*
-7. **Filename convention for downloaded media = `<utc-timestamp>_<senderId>_<messageId>.<ext>`.** This is deterministic, sortable, and collision-free across restarts. *Confirm.*
-8. **Listener filter scope.** v1 listens only to **private (1:1) chats**. Messages from groups/channels the user is in are ignored by the default handler. *Confirm this is desired for v1.*
-9. **CLI framework.** `commander` is assumed; no strong preference has been stated. *Confirm or substitute.*
-10. **Logger.** `pino` is assumed for structured JSON logs. *Confirm or substitute.*
+1. **MTProto library = GramJS (`telegram` on npm).** Actively maintained, idiomatic TypeScript, supports the full User API. TDLib via a native binding is the heavier alternative and is **not** chosen for v1. _Confirm GramJS is acceptable._
+2. **Session storage = `StringSession` written to a plain file at `TELEGRAM_SESSION_PATH`.** Permissions are set to `0600`. Encrypting the session at rest (e.g. with a passphrase-derived key) is explicitly deferred as a future hardening step. _Confirm plain file is acceptable for v1._
+3. **Recipient resolution order = username → phone → numeric ID**, with the caller able to force a specific kind if desired. _Confirm the default order._
+4. **Outgoing audio is NOT in scope for v1.** The user's raw request mentioned "getting back" audio (i.e. receiving), not sending. This is treated as receive-only. _Confirm._
+5. **"Long polling" is implemented as a persistent GramJS connection with `NewMessage` event handlers.** The literal Bot API `getUpdates` concept does not apply to MTProto; this is the User-API equivalent. _Confirm this interpretation._
+6. **`TELEGRAM_LOG_LEVEL` is required (no default) to comply with the CLAUDE.md no-fallback rule.** If the user wants a default of `info`, that must be registered as an explicit exception in the project's memory file before implementation. _Confirm._
+7. **Filename convention for downloaded media = `<utc-timestamp>_<senderId>_<messageId>.<ext>`.** This is deterministic, sortable, and collision-free across restarts. _Confirm._
+8. **Listener filter scope.** v1 listens only to **private (1:1) chats**. Messages from groups/channels the user is in are ignored by the default handler. _Confirm this is desired for v1._
+9. **CLI framework.** `commander` is assumed; no strong preference has been stated. _Confirm or substitute._
+10. **Logger.** `pino` is assumed for structured JSON logs. _Confirm or substitute._
 11. **Distribution.** The library is consumed in-repo in v1; publishing to a package registry (npm, GitHub Packages) is out of scope unless the user requests it.
-12. **2FA password source during `login`.** Assumed to be prompted interactively on stdin, never read from an environment variable. *Confirm.*
+12. **2FA password source during `login`.** Assumed to be prompted interactively on stdin, never read from an environment variable. _Confirm._
 
 ## 9. Glossary
 
 - **MTProto.** Telegram's proprietary binary protocol used by the official Telegram clients. It is the protocol underlying the "User API" (what real user accounts speak). Distinct from the HTTP-based Bot API.
 - **User API vs. Bot API.** The User API (over MTProto) authenticates as a real Telegram user account and can do anything the official apps can do. The Bot API is a simpler HTTP wrapper authenticated with a bot token; bots are separate entities from user accounts and have restrictions. This project uses the User API only.
-- **API ID / API Hash.** A pair of credentials obtained from <https://my.telegram.org> that identifies a third-party *application* (not a user) to Telegram's MTProto endpoints. Required before any user can log in through that app.
+- **API ID / API Hash.** A pair of credentials obtained from <https://my.telegram.org> that identifies a third-party _application_ (not a user) to Telegram's MTProto endpoints. Required before any user can log in through that app.
 - **StringSession.** GramJS's serialized representation of an authenticated MTProto session as a single opaque string. Persisting it to disk lets the client reconnect later without re-running the phone+code flow. It is equivalent in sensitivity to a password — anyone with the string can act as the logged-in user.
 - **FLOOD_WAIT.** An error response from Telegram (`FLOOD_WAIT_X`, where `X` is seconds) telling the client it is sending requests too fast and must wait `X` seconds before retrying. Well-behaved clients sleep and retry rather than hammering the server.
 - **GramJS.** The TypeScript/JavaScript MTProto client library published on npm as `telegram`. The chosen implementation backbone for this project.

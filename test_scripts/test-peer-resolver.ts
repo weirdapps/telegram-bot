@@ -103,9 +103,7 @@ describe('resolvePeer', () => {
     const client = makeClient();
     client.getEntity.mockRejectedValue(new Error('USERNAME_NOT_OCCUPIED'));
 
-    await expect(resolvePeer(asClient(client), '@ghost')).rejects.toBeInstanceOf(
-      PeerNotFoundError,
-    );
+    await expect(resolvePeer(asClient(client), '@ghost')).rejects.toBeInstanceOf(PeerNotFoundError);
 
     // Cache must NOT retain a failure.
     expect(client.getEntity).toHaveBeenCalled();

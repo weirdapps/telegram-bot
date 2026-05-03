@@ -6,6 +6,7 @@
 **Scope**: Adds bidirectional voice capability to `bridge/src/` so the user can send voice notes from Telegram and receive voice-note replies from Claude. The underlying `telegram-user-client` library gains one new public method (`sendVoice`); everything else lives in the `bridge/` subtree.
 **Closes**: `Issues - Pending Items.md` Pending Item #5 ("Outgoing voice / audio not supported").
 **Inputs**:
+
 - `docs/design/project-design.md` (master design, library API contracts).
 - `docs/design/project-functions.md` (existing functional requirements F-001 … F-023).
 - `bridge/src/index.ts` (current text-only bridge).
@@ -94,16 +95,16 @@ A bidirectional voice channel on top of the existing text bridge:
 
 ## 2. Technology choices & justification
 
-| Concern | Choice | Why |
-|---|---|---|
-| STT engine | **Google Cloud Speech-to-Text v2**, model `chirp_2` | Auto-detects language across `['el-GR','en-US']` in a single call (no client-side language router needed). Generous free tier covers daily use; chirp_2 pricing ~$0.024/min beyond it. ADC already present at `~/.config/gcloud/application_default_credentials.json`. |
-| TTS engine | **Google Cloud Text-to-Speech**, voices `el-GR-Chirp3-HD-Aoede` and `en-US-Chirp3-HD-Aoede` (configurable) | Chirp 3 HD voices (released 2025) are the highest quality Google offers for both languages and handle code-switched text gracefully. Free tier covers ~1M chars/month for Chirp 3 voices. |
-| STT API call style | One-shot synchronous `recognize()` (not streaming) | Telegram delivers a complete voice note in one message; there is no partial text to surface incrementally. Sync is simpler, lower latency for short clips, and avoids streaming bookkeeping. |
-| TTS audio format | **OGG_OPUS, 48 kHz mono** | Native Telegram voice-note format. No transcoding required between TTS output and `sendVoice`. |
-| Telegram voice attribute | `Api.DocumentAttributeAudio({ voice: true, duration })` | The `voice: true` flag is what makes Telegram render the round playable waveform UI instead of a generic file download. Without it, the message shows as an attachment. |
-| Voice mode persistence | Extend existing `StateStore` JSON file | Same store the bridge already uses for `sessionId` and `lastMessageAt`. One file, one mutex, no new persistence layer. |
-| Truncation strategy | Send full text first, then voice with first N seconds + tail "[see text above for full reply]" | Information loss is unacceptable for a banking/work assistant. Listening latency is the only soft cost. |
-| File retention | Configurable (`VOICE_BRIDGE_KEEP_AUDIO_FILES=true|false`) — default decision deferred to user during config | Default of `false` (delete after processing) prefered for privacy of voice content; `true` useful for debugging during shakedown. |
+| Concern                  | Choice                                                                                                     | Why                                                                                                                                                                                                                                                                    |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| STT engine               | **Google Cloud Speech-to-Text v2**, model `chirp_2`                                                        | Auto-detects language across `['el-GR','en-US']` in a single call (no client-side language router needed). Generous free tier covers daily use; chirp_2 pricing ~$0.024/min beyond it. ADC already present at `~/.config/gcloud/application_default_credentials.json`. |
+| TTS engine               | **Google Cloud Text-to-Speech**, voices `el-GR-Chirp3-HD-Aoede` and `en-US-Chirp3-HD-Aoede` (configurable) | Chirp 3 HD voices (released 2025) are the highest quality Google offers for both languages and handle code-switched text gracefully. Free tier covers ~1M chars/month for Chirp 3 voices.                                                                              |
+| STT API call style       | One-shot synchronous `recognize()` (not streaming)                                                         | Telegram delivers a complete voice note in one message; there is no partial text to surface incrementally. Sync is simpler, lower latency for short clips, and avoids streaming bookkeeping.                                                                           |
+| TTS audio format         | **OGG_OPUS, 48 kHz mono**                                                                                  | Native Telegram voice-note format. No transcoding required between TTS output and `sendVoice`.                                                                                                                                                                         |
+| Telegram voice attribute | `Api.DocumentAttributeAudio({ voice: true, duration })`                                                    | The `voice: true` flag is what makes Telegram render the round playable waveform UI instead of a generic file download. Without it, the message shows as an attachment.                                                                                                |
+| Voice mode persistence   | Extend existing `StateStore` JSON file                                                                     | Same store the bridge already uses for `sessionId` and `lastMessageAt`. One file, one mutex, no new persistence layer.                                                                                                                                                 |
+| Truncation strategy      | Send full text first, then voice with first N seconds + tail "[see text above for full reply]"             | Information loss is unacceptable for a banking/work assistant. Listening latency is the only soft cost.                                                                                                                                                                |
+| File retention           | Configurable (`VOICE_BRIDGE_KEEP_AUDIO_FILES=true                                                          | false`) — default decision deferred to user during config                                                                                                                                                                                                              | Default of `false` (delete after processing) prefered for privacy of voice content; `true` useful for debugging during shakedown. |
 
 ---
 
@@ -163,7 +164,10 @@ export interface TranscriptionResult {
 
 /** Thrown when STT fails for any non-config reason. */
 export class TranscriptionError extends Error {
-  constructor(message: string, public readonly cause?: unknown) {
+  constructor(
+    message: string,
+    public readonly cause?: unknown,
+  ) {
     super(message);
     this.name = 'TranscriptionError';
   }
@@ -193,10 +197,11 @@ export function createSpeechClient(projectId: string, keyFilename: string): Spee
 ```
 
 **Implementation notes:**
+
 - Model + location: **`'long'` in `'eu'` multi-region** — NOT the originally-specified `chirp_2 + global`. Two structural constraints make `chirp_2 + global` impossible:
   1. `chirp_2` is region-pinned to single regions (us-central1, europe-west4, …) — it is not deployed in any multi-region (`global`, `eu`, `us`).
   2. Multi-language auto-detect (`languageCodes` with multiple entries) only works in multi-regions (`eu`, `global`, `us`).
-  These two requirements have empty intersection. `'long'` in `'eu'` satisfies both with comparable quality for short voice notes (≤ 60 s).
+     These two requirements have empty intersection. `'long'` in `'eu'` satisfies both with comparable quality for short voice notes (≤ 60 s).
 - Regional endpoint: when using a regional location, the client MUST be constructed with `apiEndpoint: '<location>-speech.googleapis.com'`. The default `speech.googleapis.com` endpoint cannot serve regional recognizer paths.
 - Recognizer resource path: `projects/${projectId}/locations/eu/recognizers/_` (underscore = inline config).
 - Request body: `{ config: { autoDecodingConfig: {}, languageCodes: ['el-GR', 'en-US'], model: 'long' }, content: <ogg bytes> }`.
@@ -217,7 +222,10 @@ export interface VoiceConfig {
 
 /** Thrown when TTS synthesis fails. */
 export class SynthesisError extends Error {
-  constructor(message: string, public readonly cause?: unknown) {
+  constructor(
+    message: string,
+    public readonly cause?: unknown,
+  ) {
     super(message);
     this.name = 'SynthesisError';
   }
@@ -255,6 +263,7 @@ export function createTtsClient(projectId: string, keyFilename: string): TextToS
 ```
 
 **Implementation notes:**
+
 - Audio config: `{ audioEncoding: 'OGG_OPUS', sampleRateHertz: 48000 }`.
 - Voice selection: `{ languageCode: language, name: voiceConfig[language] }`.
 - Telegram's voice-note duration field is mandatory; estimate via `audio.length * 8 / (24000)` as a fallback (Opus VBR ≈ 24 kbps for speech) when Google's response omits an explicit duration.
@@ -394,15 +403,19 @@ Adds a second event subscription:
 
 ```typescript
 client.on('voice', (msg) => {
-  if (!isAllowed(msg.senderId, allowed)) { /* ... reject ... */ return; }
+  if (!isAllowed(msg.senderId, allowed)) {
+    /* ... reject ... */ return;
+  }
   queue = queue.then(() =>
-    handleVoiceMessage(msg, state, client, logger, cwd, sttClient, ttsClient, voiceConfig)
-      .catch(err => logger.error({ component: 'bridge', err: String(err) }, 'voice handler failed'))
+    handleVoiceMessage(msg, state, client, logger, cwd, sttClient, ttsClient, voiceConfig).catch(
+      (err) => logger.error({ component: 'bridge', err: String(err) }, 'voice handler failed'),
+    ),
   );
 });
 ```
 
 Where `handleVoiceMessage`:
+
 1. Calls `transcribeOgg(msg.filePath, sttClient, projectId)`.
 2. If `text` is empty, replies with the standard "couldn't make out" message and returns.
 3. Otherwise calls `handleMessage(text, ...)` (the existing function), but with an `inputModality: 'voice'` parameter and the detected language.
@@ -416,15 +429,15 @@ The existing `handleMessage(text, ...)` is extended with optional parameters `in
 
 All vars throw `ConfigError` if absent (per project rule "no fallback for configuration").
 
-| Variable | Purpose | Example value |
-|---|---|---|
-| `VOICE_BRIDGE_GCP_KEY_PATH` | Path to GCP service-account JSON key with `roles/speech.client` + `roles/serviceusage.serviceUsageConsumer` on `GOOGLE_CLOUD_PROJECT` | `/Users/plessas/.config/gcloud/voice-bridge-sa.json` |
-| `GOOGLE_CLOUD_PROJECT` | GCP project for Speech v2 recognizer path | `gen-lang-client-0063450259` |
-| `VOICE_BRIDGE_TTS_VOICE_EL` | TTS voice name for Greek replies | `el-GR-Chirp3-HD-Aoede` |
-| `VOICE_BRIDGE_TTS_VOICE_EN` | TTS voice name for English replies | `en-US-Chirp3-HD-Aoede` |
-| `VOICE_BRIDGE_MAX_AUDIO_SECONDS` | Cap on synthesised voice-note duration before truncation | `60` |
-| `VOICE_BRIDGE_KEEP_AUDIO_FILES` | `true` keeps downloaded OGG + synthesised replies on disk; `false` deletes after sending | `false` |
-| `VOICE_BRIDGE_REJECT_ABOVE_SECONDS` | Reject inbound voice notes longer than this (Cloud Speech sync limit safeguard) | `300` |
+| Variable                            | Purpose                                                                                                                               | Example value                                        |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| `VOICE_BRIDGE_GCP_KEY_PATH`         | Path to GCP service-account JSON key with `roles/speech.client` + `roles/serviceusage.serviceUsageConsumer` on `GOOGLE_CLOUD_PROJECT` | `/Users/plessas/.config/gcloud/voice-bridge-sa.json` |
+| `GOOGLE_CLOUD_PROJECT`              | GCP project for Speech v2 recognizer path                                                                                             | `gen-lang-client-0063450259`                         |
+| `VOICE_BRIDGE_TTS_VOICE_EL`         | TTS voice name for Greek replies                                                                                                      | `el-GR-Chirp3-HD-Aoede`                              |
+| `VOICE_BRIDGE_TTS_VOICE_EN`         | TTS voice name for English replies                                                                                                    | `en-US-Chirp3-HD-Aoede`                              |
+| `VOICE_BRIDGE_MAX_AUDIO_SECONDS`    | Cap on synthesised voice-note duration before truncation                                                                              | `60`                                                 |
+| `VOICE_BRIDGE_KEEP_AUDIO_FILES`     | `true` keeps downloaded OGG + synthesised replies on disk; `false` deletes after sending                                              | `false`                                              |
+| `VOICE_BRIDGE_REJECT_ABOVE_SECONDS` | Reject inbound voice notes longer than this (Cloud Speech sync limit safeguard)                                                       | `300`                                                |
 
 **Why `VOICE_BRIDGE_GCP_KEY_PATH` and NOT `GOOGLE_APPLICATION_CREDENTIALS`**: the bridge process also runs the Anthropic Agent SDK in Vertex mode (`CLAUDE_CODE_USE_VERTEX=1`). The Anthropic SDK reads `GOOGLE_APPLICATION_CREDENTIALS` from process.env to authenticate Claude→Vertex calls. Using the standard name would cause the Anthropic SDK to authenticate as the personal voice-bridge SA (no permission on the NBG Vertex project) and crash every Claude turn with `aiplatform.endpoints.predict denied`. By using a bridge-namespaced var and passing the path explicitly to STT/TTS clients via `keyFilename`, the Anthropic SDK falls back to ADC (NBG account) as intended.
 
@@ -434,16 +447,17 @@ All vars throw `ConfigError` if absent (per project rule "no fallback for config
 
 ## 6. Behaviour matrix
 
-| Inbound modality | voiceMode | Reply length ≤ max | Reply length > max | Notes |
-|---|---|---|---|---|
-| voice | `mirror` | voice only | text first, then truncated voice | Mirror = match the modality of the input |
-| voice | `always` | voice only | text first, then truncated voice | Same as mirror when input is voice |
-| voice | `off`    | text only | text only | User has opted out of voice replies even after voice input |
-| text  | `mirror` | text only | text only | No change from current behaviour |
-| text  | `always` | text + voice (en-US default) | text + truncated voice | Useful for AirPods background-listening while typing |
-| text  | `off`    | text only | text only | Identical to current bridge |
+| Inbound modality | voiceMode | Reply length ≤ max           | Reply length > max               | Notes                                                      |
+| ---------------- | --------- | ---------------------------- | -------------------------------- | ---------------------------------------------------------- |
+| voice            | `mirror`  | voice only                   | text first, then truncated voice | Mirror = match the modality of the input                   |
+| voice            | `always`  | voice only                   | text first, then truncated voice | Same as mirror when input is voice                         |
+| voice            | `off`     | text only                    | text only                        | User has opted out of voice replies even after voice input |
+| text             | `mirror`  | text only                    | text only                        | No change from current behaviour                           |
+| text             | `always`  | text + voice (en-US default) | text + truncated voice           | Useful for AirPods background-listening while typing       |
+| text             | `off`     | text only                    | text only                        | Identical to current bridge                                |
 
 Edge cases:
+
 - **Empty STT result** (no speech / silence / unintelligible): bridge replies with one text message: `"couldn't make out the voice note — try again or send text"`. No call to Claude.
 - **Inbound voice >`VOICE_BRIDGE_REJECT_ABOVE_SECONDS`**: bridge rejects with `"voice notes capped at N minutes — please split into shorter messages"`. No STT call.
 - **TTS API failure**: bridge falls back to text-only reply for that turn, logs the error at level `error`, and continues normally on next turn. No retry.
@@ -455,11 +469,11 @@ Edge cases:
 
 ## 7. Error taxonomy (additions)
 
-| Error class | Where thrown | Recovery |
-|---|---|---|
-| `ConfigError` (existing) | `loadConfig()` extended for new vars | Bridge fails to start — operator fixes env |
-| `TranscriptionError` (new) | `stt/google.ts` | Bridge logs, sends user-facing apology text, resumes |
-| `SynthesisError` (new) | `tts/google.ts` | Bridge logs, falls back to text reply, resumes |
+| Error class                | Where thrown                         | Recovery                                             |
+| -------------------------- | ------------------------------------ | ---------------------------------------------------- |
+| `ConfigError` (existing)   | `loadConfig()` extended for new vars | Bridge fails to start — operator fixes env           |
+| `TranscriptionError` (new) | `stt/google.ts`                      | Bridge logs, sends user-facing apology text, resumes |
+| `SynthesisError` (new)     | `tts/google.ts`                      | Bridge logs, falls back to text reply, resumes       |
 
 No new `Error` types are needed beyond these two.
 

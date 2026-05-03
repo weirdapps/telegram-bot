@@ -9,7 +9,7 @@ A TypeScript library and thin CLI that logs into Telegram **as a real user accou
 ## Prerequisites
 
 - **Node.js 20 LTS** or newer.
-- A Telegram developer **api_id** and **api_hash** obtained from <https://my.telegram.org> → *API development tools*.
+- A Telegram developer **api_id** and **api_hash** obtained from <https://my.telegram.org> → _API development tools_.
 - Your own Telegram phone number.
 
 ## Install
@@ -24,6 +24,7 @@ npm run link        # builds and registers `telegram-cli` (and short alias `tg`)
 ## Quickstart
 
 1. Copy the environment template and fill in real values:
+
    ```bash
    cp .env.example .env
    # then open .env and set TELEGRAM_API_ID / TELEGRAM_API_HASH / TELEGRAM_PHONE_NUMBER
@@ -31,16 +32,19 @@ npm run link        # builds and registers `telegram-cli` (and short alias `tg`)
    ```
 
 2. Log in once interactively (phone code + optional 2FA). This writes the serialized `StringSession` to `TELEGRAM_SESSION_PATH`:
+
    ```bash
    telegram-cli login
    ```
 
 3. Send a text DM:
+
    ```bash
    telegram-cli send-text --to @username --text "hello from the CLI"
    ```
 
 4. Start listening for incoming DMs. Each new message is printed to stdout as a JSON line; photo / voice / audio attachments are downloaded to `TELEGRAM_DOWNLOAD_DIR`. Press `Ctrl+C` to exit cleanly:
+
    ```bash
    telegram-cli listen
    ```
@@ -51,14 +55,14 @@ npm run link        # builds and registers `telegram-cli` (and short alias `tg`)
 
 All commands are available as `telegram-cli <subcommand>` (or `tg <subcommand>`, or `npm run cli -- <subcommand>` if you skipped `npm run link`).
 
-| Subcommand | Flags | Description |
-|---|---|---|
-| `login` | — | Interactive login. Prompts for the SMS/Telegram login code and the 2FA password (if enabled). Persists the session to `TELEGRAM_SESSION_PATH`. |
-| `logout` | — | Invalidates the session server-side and deletes the local session file. |
-| `send-text` | `--to <peer>` `--text <string>` | Sends a plain-text message. |
-| `send-image` | `--to <peer>` `--file <path>` `[--caption <text>]` | Sends an image as a Telegram photo. |
-| `send-file` | `--to <peer>` `--file <path>` `[--caption <text>]` | Sends an arbitrary file as a Telegram document (preserves the filename). |
-| `listen` | — | Opens a persistent MTProto connection. Emits one JSON line per incoming DM. Downloads photo / voice / audio attachments. Exits cleanly on `SIGINT` / `SIGTERM`. |
+| Subcommand   | Flags                                              | Description                                                                                                                                                     |
+| ------------ | -------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `login`      | —                                                  | Interactive login. Prompts for the SMS/Telegram login code and the 2FA password (if enabled). Persists the session to `TELEGRAM_SESSION_PATH`.                  |
+| `logout`     | —                                                  | Invalidates the session server-side and deletes the local session file.                                                                                         |
+| `send-text`  | `--to <peer>` `--text <string>`                    | Sends a plain-text message.                                                                                                                                     |
+| `send-image` | `--to <peer>` `--file <path>` `[--caption <text>]` | Sends an image as a Telegram photo.                                                                                                                             |
+| `send-file`  | `--to <peer>` `--file <path>` `[--caption <text>]` | Sends an arbitrary file as a Telegram document (preserves the filename).                                                                                        |
+| `listen`     | —                                                  | Opens a persistent MTProto connection. Emits one JSON line per incoming DM. Downloads photo / voice / audio attachments. Exits cleanly on `SIGINT` / `SIGTERM`. |
 
 ### Peer formats
 

@@ -17,10 +17,7 @@ import { classifyIncoming } from '../src/client/media.js';
  * Builds a minimally-shaped Api.Document stand-in. Only the fields the
  * classifier reads (attributes, mimeType) need to be populated.
  */
-function buildDoc(opts: {
-  mimeType?: string;
-  attributes?: unknown[];
-}): Api.Document {
+function buildDoc(opts: { mimeType?: string; attributes?: unknown[] }): Api.Document {
   return {
     mimeType: opts.mimeType ?? '',
     attributes: opts.attributes ?? [],

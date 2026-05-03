@@ -3,8 +3,9 @@ import { stripMarkdownForSpeech } from '../bridge/src/markdownStrip.js';
 
 describe('stripMarkdownForSpeech', () => {
   it('strips bold and italic markers', () => {
-    expect(stripMarkdownForSpeech('hello **world** and *foo* and __bar__'))
-      .toBe('hello world and foo and bar');
+    expect(stripMarkdownForSpeech('hello **world** and *foo* and __bar__')).toBe(
+      'hello world and foo and bar',
+    );
   });
 
   it('strips heading hashes but keeps text', () => {
@@ -27,8 +28,9 @@ describe('stripMarkdownForSpeech', () => {
   });
 
   it('keeps link text, drops URL', () => {
-    expect(stripMarkdownForSpeech('see [Google](https://google.com) please'))
-      .toBe('see Google please');
+    expect(stripMarkdownForSpeech('see [Google](https://google.com) please')).toBe(
+      'see Google please',
+    );
   });
 
   it('strips bullet markers', () => {
@@ -50,8 +52,7 @@ describe('stripMarkdownForSpeech', () => {
   });
 
   it('drops raw URLs', () => {
-    expect(stripMarkdownForSpeech('go to https://example.com now'))
-      .toMatch(/^go to\s+now$/);
+    expect(stripMarkdownForSpeech('go to https://example.com now')).toMatch(/^go to\s+now$/);
   });
 
   it('drops common emoji and decorative symbols', () => {

@@ -1,8 +1,4 @@
-import {
-  query,
-  type SDKResultMessage,
-  type SdkPluginConfig,
-} from '@anthropic-ai/claude-agent-sdk';
+import { query, type SDKResultMessage, type SdkPluginConfig } from '@anthropic-ai/claude-agent-sdk';
 import { canUseTool, getPermissionMode } from './permissions.js';
 
 export interface ClaudeResult {
@@ -56,9 +52,7 @@ export async function askClaude(opts: {
   const resetIdle = (): void => {
     if (idleTimer) clearTimeout(idleTimer);
     idleTimer = setTimeout(() => {
-      abortController.abort(
-        new Error(`SDK silent for ${SDK_SILENCE_TIMEOUT_MS / 1000}s`),
-      );
+      abortController.abort(new Error(`SDK silent for ${SDK_SILENCE_TIMEOUT_MS / 1000}s`));
     }, SDK_SILENCE_TIMEOUT_MS);
   };
 
@@ -74,9 +68,7 @@ export async function askClaude(opts: {
   } catch (err) {
     if (abortController.signal.aborted) {
       const reason = abortController.signal.reason;
-      throw reason instanceof Error
-        ? reason
-        : new Error(`Claude SDK aborted: ${String(reason)}`);
+      throw reason instanceof Error ? reason : new Error(`Claude SDK aborted: ${String(reason)}`);
     }
     throw err;
   } finally {

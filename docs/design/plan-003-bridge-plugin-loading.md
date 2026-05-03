@@ -10,6 +10,7 @@
 The Telegram bridge spawns Claude via the Agent SDK (`@anthropic-ai/claude-agent-sdk@0.2.117`), which by default does NOT inherit the user's installed plugin set from `~/.claude/settings.json`. Result: in this bridge session only a small subset of MCP servers and zero plugin-defined skills/commands/agents/hooks are available, while the user's interactive Claude Code session has 35 enabled plugins (trading-hub, email-handler, outlook-bridge, second-brain, superpowers, …).
 
 Concrete impact observed during plan-002 testing:
+
 - `outlook-bridge` MCP (calendar, mail) never loaded → fell back to direct `outlook-cli` shell calls
 - `second-brain` MCP keeps disconnecting (loaded inconsistently)
 - `workiq`, `chrome-devtools`, `figma`, `context7` and others either disconnect or never appear
@@ -19,6 +20,7 @@ Concrete impact observed during plan-002 testing:
 ## Inventory (snapshot 2026-04-25)
 
 From `~/.claude/settings.json::enabledPlugins`:
+
 - 35 enabled plugins across 4 marketplaces
   - claude-plugins-official: 21 (superpowers, semgrep, vercel, figma, hookify, …)
   - communications-marketplace: 5 (outlook-bridge, email-handler, meeting-prep, presentation-maker, creative-toolkit)
@@ -27,11 +29,13 @@ From `~/.claude/settings.json::enabledPlugins`:
   - anthropic-agent-skills: 1 (document-skills)
 
 Plugins shipping MCP servers (auto-loaded when plugin is loaded):
+
 - discord, figma, imessage, microsoft-docs, semgrep, supabase, vercel (from claude-plugins-official)
 - outlook-bridge, second-brain (from communications-marketplace and second-brain repo)
 - chrome-devtools, playwright, news-reader, workiq
 
 Plugins shipping hooks:
+
 - hookify, learning-output-style, ralph-loop, remember, security-guidance, semgrep, superpowers, vercel
 
 ## Strategy — single change in `bridge/src/claude.ts`
@@ -39,6 +43,7 @@ Plugins shipping hooks:
 Use the Agent SDK's `plugins?: SdkPluginConfig[]` option (file `node_modules/@anthropic-ai/claude-agent-sdk/sdk.d.ts:1442`). Each entry: `{ type: 'local', path: '<abs path to plugin version dir>' }`. The SDK loads commands, agents, skills, hooks, AND MCP servers from each plugin — same mechanism the CLI uses.
 
 Algorithm:
+
 1. Read `~/.claude/settings.json` → `enabledPlugins` map.
 2. For each `name@marketplace` key, resolve to `~/.claude/plugins/cache/<marketplace>/<name>/<version>/`. If multiple versions exist, pick the **lexicographically highest semver** version directory (newest install).
 3. Build the `SdkPluginConfig[]` array.
@@ -47,27 +52,27 @@ Algorithm:
 
 ## Files to change (one)
 
-| File | Change | LOC |
-|---|---|---|
-| `bridge/src/pluginLoader.ts` | NEW: `loadEnabledPlugins(): SdkPluginConfig[]` — reads settings.json, resolves paths, returns array | ~70 |
-| `bridge/src/claude.ts` | MODIFIED: import loader, pass `plugins` and `settingSources` to `query()` | +5 |
-| `bridge/src/index.ts` | MODIFIED: log how many plugins loaded at startup | +3 |
-| `test_scripts/test-pluginLoader.ts` | NEW: test path resolution + version selection (mock cache dir) | ~60 |
+| File                                | Change                                                                                              | LOC |
+| ----------------------------------- | --------------------------------------------------------------------------------------------------- | --- |
+| `bridge/src/pluginLoader.ts`        | NEW: `loadEnabledPlugins(): SdkPluginConfig[]` — reads settings.json, resolves paths, returns array | ~70 |
+| `bridge/src/claude.ts`              | MODIFIED: import loader, pass `plugins` and `settingSources` to `query()`                           | +5  |
+| `bridge/src/index.ts`               | MODIFIED: log how many plugins loaded at startup                                                    | +3  |
+| `test_scripts/test-pluginLoader.ts` | NEW: test path resolution + version selection (mock cache dir)                                      | ~60 |
 
 Total: ~140 new LOC, ~8 modified.
 
 ## Edge cases
 
-| Case | Behavior |
-|---|---|
-| Plugin enabled but cache dir missing | Skip with `warn` log; bridge still starts |
-| Multiple version dirs (e.g. `0.5.3` and `0.5.4`) | Pick highest semver (newest install) |
-| `unknown` version dir name | Treat as lowest priority; warn |
-| Plugin manifest invalid JSON | Skip with `error` log; bridge still starts |
-| MCP server from a plugin needs env vars (e.g. `GOOGLE_APPLICATION_CREDENTIALS`) | Inherits from process.env — already set in `.env` |
-| Plugin's hook fires during voice-bridge turn (e.g. SessionStart on every Claude call) | Acceptable; matches CLI behavior |
-| User wants subset of plugins (e.g. exclude noisy ones) | NEW env var `BRIDGE_PLUGIN_DENYLIST` (comma-separated `name@marketplace`); each enabled plugin checked against denylist |
-| All 35 plugins loaded blow up context window | Acceptable — Claude already handles this in CLI; if needed, denylist gives escape hatch |
+| Case                                                                                  | Behavior                                                                                                                |
+| ------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| Plugin enabled but cache dir missing                                                  | Skip with `warn` log; bridge still starts                                                                               |
+| Multiple version dirs (e.g. `0.5.3` and `0.5.4`)                                      | Pick highest semver (newest install)                                                                                    |
+| `unknown` version dir name                                                            | Treat as lowest priority; warn                                                                                          |
+| Plugin manifest invalid JSON                                                          | Skip with `error` log; bridge still starts                                                                              |
+| MCP server from a plugin needs env vars (e.g. `GOOGLE_APPLICATION_CREDENTIALS`)       | Inherits from process.env — already set in `.env`                                                                       |
+| Plugin's hook fires during voice-bridge turn (e.g. SessionStart on every Claude call) | Acceptable; matches CLI behavior                                                                                        |
+| User wants subset of plugins (e.g. exclude noisy ones)                                | NEW env var `BRIDGE_PLUGIN_DENYLIST` (comma-separated `name@marketplace`); each enabled plugin checked against denylist |
+| All 35 plugins loaded blow up context window                                          | Acceptable — Claude already handles this in CLI; if needed, denylist gives escape hatch                                 |
 
 ## Behaviour after change
 
@@ -88,13 +93,13 @@ Total: ~140 new LOC, ~8 modified.
 
 ## Risks
 
-| Risk | Mitigation |
-|---|---|
-| Plugin loading dramatically increases context per turn → cost spike | Monitor `costUsd` in bridge logs; deploy denylist if needed |
-| MCP server processes (one per MCP-shipping plugin) fight for resources | macOS handles ~50 child processes fine; defer optimization until proven |
-| Hook from `learning-output-style` injects markdown reminders into every voice turn | Already an issue (visible in this conversation); plan-002's voice-context hint partially mitigates; deeper fix is the denylist |
-| Plugin version directories contain symlinks or relative imports that break with absolute path resolution | The SDK resolves paths internally — the same code that works in CLI will work here |
-| SA key + Vertex credential conflict resurfaces if a plugin re-reads `GOOGLE_APPLICATION_CREDENTIALS` at process start | Already isolated via `VOICE_BRIDGE_GCP_KEY_PATH`; new plugins inherit but don't re-trigger |
+| Risk                                                                                                                  | Mitigation                                                                                                                     |
+| --------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| Plugin loading dramatically increases context per turn → cost spike                                                   | Monitor `costUsd` in bridge logs; deploy denylist if needed                                                                    |
+| MCP server processes (one per MCP-shipping plugin) fight for resources                                                | macOS handles ~50 child processes fine; defer optimization until proven                                                        |
+| Hook from `learning-output-style` injects markdown reminders into every voice turn                                    | Already an issue (visible in this conversation); plan-002's voice-context hint partially mitigates; deeper fix is the denylist |
+| Plugin version directories contain symlinks or relative imports that break with absolute path resolution              | The SDK resolves paths internally — the same code that works in CLI will work here                                             |
+| SA key + Vertex credential conflict resurfaces if a plugin re-reads `GOOGLE_APPLICATION_CREDENTIALS` at process start | Already isolated via `VOICE_BRIDGE_GCP_KEY_PATH`; new plugins inherit but don't re-trigger                                     |
 
 ## Implementation order
 

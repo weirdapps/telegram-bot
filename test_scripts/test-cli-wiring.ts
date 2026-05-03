@@ -57,20 +57,17 @@ describe('CLI wiring', () => {
     // developer's checked-out `.env`. This preserves the test's original intent —
     // verifying that missing required config produces a readable error — even on
     // a workstation that has real credentials configured.
-    const result = runCli(
-      ['send-text', '--to', '@noone', '--text', 'x'],
-      {
-        isolateFromDotenv: true,
-        env: {
-          TELEGRAM_API_ID: undefined,
-          TELEGRAM_API_HASH: undefined,
-          TELEGRAM_PHONE_NUMBER: undefined,
-          TELEGRAM_SESSION_PATH: undefined,
-          TELEGRAM_DOWNLOAD_DIR: undefined,
-          TELEGRAM_LOG_LEVEL: undefined,
-        },
+    const result = runCli(['send-text', '--to', '@noone', '--text', 'x'], {
+      isolateFromDotenv: true,
+      env: {
+        TELEGRAM_API_ID: undefined,
+        TELEGRAM_API_HASH: undefined,
+        TELEGRAM_PHONE_NUMBER: undefined,
+        TELEGRAM_SESSION_PATH: undefined,
+        TELEGRAM_DOWNLOAD_DIR: undefined,
+        TELEGRAM_LOG_LEVEL: undefined,
       },
-    );
+    });
 
     expect(result.status).not.toBe(0);
 

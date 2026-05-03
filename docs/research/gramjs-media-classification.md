@@ -1,8 +1,8 @@
 # GramJS Incoming Media Classification & Download Edge Cases
 
-**Research date**: 2026-04-22  
-**GramJS version targeted**: 2.26.x (`telegram` npm package)  
-**Node / TypeScript**: Node 20+, strict TypeScript  
+**Research date**: 2026-04-22
+**GramJS version targeted**: 2.26.x (`telegram` npm package)
+**Node / TypeScript**: Node 20+, strict TypeScript
 **Primary source**: GramJS source code at https://github.com/gram-js/gramjs (verified against `master` branch, April 2026)
 
 ---
@@ -47,7 +47,7 @@ Note: the loop returns `undefined` as soon as it finds the first attribute that 
 thumbs = thumbs.sort((a, b) => sortThumb(a) - sortThumb(b));
 // ...filter out PhotoPathSize...
 if (thumb == undefined) {
-    return correctThumbs.pop();   // largest after sort ascending by byte-count
+  return correctThumbs.pop(); // largest after sort ascending by byte-count
 }
 ```
 
@@ -59,17 +59,17 @@ if (thumb == undefined) {
 
 All getters defined in `gramjs/tl/custom/message.ts`:
 
-| Property | Returns | Condition |
-|---|---|---|
-| `message.photo` | `Api.Photo \| undefined` | `media instanceof Api.MessageMediaPhoto && media.photo instanceof Api.Photo` |
-| `message.document` | `Api.Document \| undefined` | `media instanceof Api.MessageMediaDocument && media.document instanceof Api.Document` |
-| `message.audio` | `Api.Document \| undefined` | `document` has `DocumentAttributeAudio` with `voice === false` |
-| `message.voice` | `Api.Document \| undefined` | `document` has `DocumentAttributeAudio` with `voice === true` |
-| `message.video` | `Api.Document \| undefined` | `document` has `DocumentAttributeVideo` (any) |
-| `message.videoNote` | `Api.Document \| undefined` | `document` has `DocumentAttributeVideo` with `roundMessage === true` |
-| `message.gif` | `Api.Document \| undefined` | `document` has `DocumentAttributeAnimated` |
-| `message.sticker` | `Api.Document \| undefined` | `document` has `DocumentAttributeSticker` |
-| `message.contact` | `Api.MessageMediaContact \| undefined` | `media instanceof Api.MessageMediaContact` |
+| Property            | Returns                                | Condition                                                                             |
+| ------------------- | -------------------------------------- | ------------------------------------------------------------------------------------- |
+| `message.photo`     | `Api.Photo \| undefined`               | `media instanceof Api.MessageMediaPhoto && media.photo instanceof Api.Photo`          |
+| `message.document`  | `Api.Document \| undefined`            | `media instanceof Api.MessageMediaDocument && media.document instanceof Api.Document` |
+| `message.audio`     | `Api.Document \| undefined`            | `document` has `DocumentAttributeAudio` with `voice === false`                        |
+| `message.voice`     | `Api.Document \| undefined`            | `document` has `DocumentAttributeAudio` with `voice === true`                         |
+| `message.video`     | `Api.Document \| undefined`            | `document` has `DocumentAttributeVideo` (any)                                         |
+| `message.videoNote` | `Api.Document \| undefined`            | `document` has `DocumentAttributeVideo` with `roundMessage === true`                  |
+| `message.gif`       | `Api.Document \| undefined`            | `document` has `DocumentAttributeAnimated`                                            |
+| `message.sticker`   | `Api.Document \| undefined`            | `document` has `DocumentAttributeSticker`                                             |
+| `message.contact`   | `Api.MessageMediaContact \| undefined` | `media instanceof Api.MessageMediaContact`                                            |
 
 **Critical subtlety**: `message.gif` checks for `DocumentAttributeAnimated`, not for the `video/mp4` mime type. Telegram converts GIFs to MPEG4 server-side, so old-style GIFs sent from the app arrive as `MessageMediaDocument` with `mimeType: "video/mp4"` **plus** `DocumentAttributeAnimated`. The `message.gif` getter catches these correctly.
 
@@ -79,34 +79,29 @@ All getters defined in `gramjs/tl/custom/message.ts`:
 
 ## Media Shape → Kind → Extension Table
 
-| Scenario | `message.media` type | Distinguishing attribute | Our kind | Extension |
-|---|---|---|---|---|
-| Photo (compressed) | `MessageMediaPhoto` | — | `"photo"` | `.jpg` |
-| Photo sent as file ("without compression") | `MessageMediaDocument` | `mimeType: "image/jpeg"` or `"image/png"`, has `DocumentAttributeImageSize` | `"photo"` | `.jpg` / `.png` (from mime) |
-| Voice note | `MessageMediaDocument` | `DocumentAttributeAudio { voice: true }` | `"voice"` | `.ogg` (mime: `audio/ogg`) |
-| Audio / music file | `MessageMediaDocument` | `DocumentAttributeAudio { voice: false }` + `DocumentAttributeFilename` | `"audio"` | from `DocumentAttributeFilename.fileName` |
-| Audio file without filename | `MessageMediaDocument` | `DocumentAttributeAudio { voice: false }`, no `DocumentAttributeFilename` | `"audio"` | from `mimeType` → mime library |
-| Video file | `MessageMediaDocument` | `DocumentAttributeVideo` (no `roundMessage`) | `"other"` (ignored) | — |
-| Video note (round video) | `MessageMediaDocument` | `DocumentAttributeVideo { roundMessage: true }` | `"other"` (ignored) | — |
-| Animated GIF (MPEG4) | `MessageMediaDocument` | `DocumentAttributeAnimated` | `"other"` (ignored) | — |
-| Sticker (static/TGS/webm) | `MessageMediaDocument` | `DocumentAttributeSticker` | `"other"` (ignored) | — |
-| Generic document (PDF, ZIP, etc.) | `MessageMediaDocument` | only `DocumentAttributeFilename` | `"other"` (ignored) | — |
-| Text only | no `media` | — | `"text"` | — |
-| Service / empty | `MessageMediaEmpty` | — | `"other"` (ignored) | — |
+| Scenario                                   | `message.media` type   | Distinguishing attribute                                                    | Our kind            | Extension                                 |
+| ------------------------------------------ | ---------------------- | --------------------------------------------------------------------------- | ------------------- | ----------------------------------------- |
+| Photo (compressed)                         | `MessageMediaPhoto`    | —                                                                           | `"photo"`           | `.jpg`                                    |
+| Photo sent as file ("without compression") | `MessageMediaDocument` | `mimeType: "image/jpeg"` or `"image/png"`, has `DocumentAttributeImageSize` | `"photo"`           | `.jpg` / `.png` (from mime)               |
+| Voice note                                 | `MessageMediaDocument` | `DocumentAttributeAudio { voice: true }`                                    | `"voice"`           | `.ogg` (mime: `audio/ogg`)                |
+| Audio / music file                         | `MessageMediaDocument` | `DocumentAttributeAudio { voice: false }` + `DocumentAttributeFilename`     | `"audio"`           | from `DocumentAttributeFilename.fileName` |
+| Audio file without filename                | `MessageMediaDocument` | `DocumentAttributeAudio { voice: false }`, no `DocumentAttributeFilename`   | `"audio"`           | from `mimeType` → mime library            |
+| Video file                                 | `MessageMediaDocument` | `DocumentAttributeVideo` (no `roundMessage`)                                | `"other"` (ignored) | —                                         |
+| Video note (round video)                   | `MessageMediaDocument` | `DocumentAttributeVideo { roundMessage: true }`                             | `"other"` (ignored) | —                                         |
+| Animated GIF (MPEG4)                       | `MessageMediaDocument` | `DocumentAttributeAnimated`                                                 | `"other"` (ignored) | —                                         |
+| Sticker (static/TGS/webm)                  | `MessageMediaDocument` | `DocumentAttributeSticker`                                                  | `"other"` (ignored) | —                                         |
+| Generic document (PDF, ZIP, etc.)          | `MessageMediaDocument` | only `DocumentAttributeFilename`                                            | `"other"` (ignored) | —                                         |
+| Text only                                  | no `media`             | —                                                                           | `"text"`            | —                                         |
+| Service / empty                            | `MessageMediaEmpty`    | —                                                                           | `"other"` (ignored) | —                                         |
 
 ---
 
 ## Ready-to-Paste: `classifyIncoming` Function
 
 ```typescript
-import { Api } from "telegram";
+import { Api } from 'telegram';
 
-export type MediaKind =
-  | "text"
-  | "photo"
-  | "voice"
-  | "audio"
-  | "other";
+export type MediaKind = 'text' | 'photo' | 'voice' | 'audio' | 'other';
 
 export interface ClassificationResult {
   kind: MediaKind;
@@ -136,7 +131,7 @@ export function classifyIncoming(message: Api.Message): ClassificationResult {
   // ── 1. Native compressed photo ──────────────────────────────────────────
   // message.photo getter: media instanceof MessageMediaPhoto && photo instanceof Api.Photo
   if (message.photo) {
-    return { kind: "photo" };
+    return { kind: 'photo' };
   }
 
   // ── 2. Photo sent "without compression" (as document) ───────────────────
@@ -144,23 +139,22 @@ export function classifyIncoming(message: Api.Message): ClassificationResult {
   // GramJS does NOT expose a shortcut for this case; we must inspect the document.
   const doc = message.document; // undefined if media is not MessageMediaDocument
   if (doc) {
-    const mimeType = doc.mimeType ?? "";
+    const mimeType = doc.mimeType ?? '';
 
-    if (mimeType.startsWith("image/")) {
+    if (mimeType.startsWith('image/')) {
       // Image sent as document — normalise to "photo" bucket.
       // DocumentAttributeImageSize may or may not be present (it usually is).
-      return { kind: "photo", document: doc };
+      return { kind: 'photo', document: doc };
     }
 
     // ── 3. Voice note ────────────────────────────────────────────────────
     // message.voice getter: DocumentAttributeAudio with voice === true
     if (message.voice) {
       const audioAttr = doc.attributes.find(
-        (a): a is Api.DocumentAttributeAudio =>
-          a instanceof Api.DocumentAttributeAudio
+        (a): a is Api.DocumentAttributeAudio => a instanceof Api.DocumentAttributeAudio,
       );
       return {
-        kind: "voice",
+        kind: 'voice',
         audioDuration: audioAttr?.duration,
         document: doc,
       };
@@ -170,15 +164,13 @@ export function classifyIncoming(message: Api.Message): ClassificationResult {
     // message.audio getter: DocumentAttributeAudio with voice === false
     if (message.audio) {
       const audioAttr = doc.attributes.find(
-        (a): a is Api.DocumentAttributeAudio =>
-          a instanceof Api.DocumentAttributeAudio
+        (a): a is Api.DocumentAttributeAudio => a instanceof Api.DocumentAttributeAudio,
       );
       const nameAttr = doc.attributes.find(
-        (a): a is Api.DocumentAttributeFilename =>
-          a instanceof Api.DocumentAttributeFilename
+        (a): a is Api.DocumentAttributeFilename => a instanceof Api.DocumentAttributeFilename,
       );
       return {
-        kind: "audio",
+        kind: 'audio',
         fileName: nameAttr?.fileName,
         audioTitle: audioAttr?.title,
         audioPerformer: audioAttr?.performer,
@@ -190,16 +182,16 @@ export function classifyIncoming(message: Api.Message): ClassificationResult {
     // ── 5. Everything else document-based: sticker, GIF, video, generic doc
     // message.sticker, message.gif, message.video, message.videoNote are
     // all truthy here, but we don't need to distinguish — they all map to "other".
-    return { kind: "other", document: doc };
+    return { kind: 'other', document: doc };
   }
 
   // ── 6. Plain text ────────────────────────────────────────────────────────
   if (message.message && message.message.length > 0) {
-    return { kind: "text" };
+    return { kind: 'text' };
   }
 
   // ── 7. Fallthrough (service message, empty media, etc.) ──────────────────
-  return { kind: "other" };
+  return { kind: 'other' };
 }
 ```
 
@@ -212,10 +204,10 @@ export function classifyIncoming(message: Api.Message): ClassificationResult {
 ## Ready-to-Paste: `downloadIncomingMedia` Function
 
 ```typescript
-import path from "node:path";
-import fs from "node:fs/promises";
-import { Api } from "telegram";
-import { classifyIncoming, ClassificationResult } from "./classifyIncoming";
+import path from 'node:path';
+import fs from 'node:fs/promises';
+import { Api } from 'telegram';
+import { classifyIncoming, ClassificationResult } from './classifyIncoming';
 
 /**
  * Mime-type → extension fallback table.
@@ -223,28 +215,28 @@ import { classifyIncoming, ClassificationResult } from "./classifyIncoming";
  * or when we want to normalise a photo-as-document extension.
  */
 const MIME_TO_EXT: Record<string, string> = {
-  "image/jpeg": ".jpg",
-  "image/jpg": ".jpg",
-  "image/png": ".png",
-  "image/webp": ".webp",
-  "image/gif": ".gif",
-  "audio/ogg": ".ogg",
-  "audio/mpeg": ".mp3",
-  "audio/mp4": ".m4a",
-  "audio/aac": ".aac",
-  "audio/flac": ".flac",
-  "audio/x-flac": ".flac",
-  "audio/wav": ".wav",
-  "audio/x-wav": ".wav",
-  "video/mp4": ".mp4",
-  "video/webm": ".webm",
-  "application/pdf": ".pdf",
-  "application/octet-stream": ".bin",
+  'image/jpeg': '.jpg',
+  'image/jpg': '.jpg',
+  'image/png': '.png',
+  'image/webp': '.webp',
+  'image/gif': '.gif',
+  'audio/ogg': '.ogg',
+  'audio/mpeg': '.mp3',
+  'audio/mp4': '.m4a',
+  'audio/aac': '.aac',
+  'audio/flac': '.flac',
+  'audio/x-flac': '.flac',
+  'audio/wav': '.wav',
+  'audio/x-wav': '.wav',
+  'video/mp4': '.mp4',
+  'video/webm': '.webm',
+  'application/pdf': '.pdf',
+  'application/octet-stream': '.bin',
 };
 
 function extFromMime(mimeType: string): string {
-  if (!mimeType) return ".bin";
-  return MIME_TO_EXT[mimeType.toLowerCase()] ?? ".bin";
+  if (!mimeType) return '.bin';
+  return MIME_TO_EXT[mimeType.toLowerCase()] ?? '.bin';
 }
 
 /**
@@ -266,33 +258,30 @@ function extFromMime(mimeType: string): string {
 function buildFilename(
   message: Api.Message,
   result: ClassificationResult,
-  doc?: Api.Document
+  doc?: Api.Document,
 ): string {
-  const ts = new Date(message.date * 1000)
-    .toISOString()
-    .replace(/[:.]/g, "-");
-  const chatId = message.chatId?.toString() ?? "unknown";
+  const ts = new Date(message.date * 1000).toISOString().replace(/[:.]/g, '-');
+  const chatId = message.chatId?.toString() ?? 'unknown';
   const msgId = message.id.toString();
 
   let ext: string;
 
-  if (result.kind === "photo" && !doc) {
+  if (result.kind === 'photo' && !doc) {
     // Native compressed photo — Telegram always delivers JPEG
-    ext = ".jpg";
+    ext = '.jpg';
   } else if (doc) {
     // Try DocumentAttributeFilename first
     const nameAttr = doc.attributes.find(
-      (a): a is Api.DocumentAttributeFilename =>
-        a instanceof Api.DocumentAttributeFilename
+      (a): a is Api.DocumentAttributeFilename => a instanceof Api.DocumentAttributeFilename,
     );
     if (nameAttr?.fileName) {
-      const dotIndex = nameAttr.fileName.lastIndexOf(".");
+      const dotIndex = nameAttr.fileName.lastIndexOf('.');
       ext = dotIndex > 0 ? nameAttr.fileName.slice(dotIndex) : extFromMime(doc.mimeType);
     } else {
-      ext = extFromMime(doc.mimeType ?? "");
+      ext = extFromMime(doc.mimeType ?? '');
     }
   } else {
-    ext = ".bin";
+    ext = '.bin';
   }
 
   return `${ts}_${chatId}_${msgId}_${result.kind}${ext}`;
@@ -315,11 +304,11 @@ export interface DownloadResult {
  */
 export async function downloadIncomingMedia(
   message: Api.Message,
-  baseDir: string
+  baseDir: string,
 ): Promise<DownloadResult | undefined> {
   const result = classifyIncoming(message);
 
-  if (result.kind === "other" || result.kind === "text") {
+  if (result.kind === 'other' || result.kind === 'text') {
     return undefined;
   }
 
@@ -332,7 +321,7 @@ export async function downloadIncomingMedia(
   // or undefined if the media was deleted/unavailable.
   let buffer: Buffer | string | undefined;
 
-  if (result.kind === "photo" && !result.document) {
+  if (result.kind === 'photo' && !result.document) {
     // Native photo: GramJS picks the largest PhotoSize automatically.
     // thumb is omitted → getThumb(sizes, undefined) → pops the largest.
     buffer = await message.downloadMedia({ outputFile: filePath });
@@ -353,7 +342,7 @@ export async function downloadIncomingMedia(
   // We passed outputFile: filePath, so buffer is the path string.
 
   return {
-    filePath: typeof buffer === "string" ? buffer : filePath,
+    filePath: typeof buffer === 'string' ? buffer : filePath,
     kind: result.kind,
     fileName,
     duration: result.audioDuration,
@@ -397,6 +386,7 @@ The `_downloadPhoto` function (source: `gramjs/client/downloads.ts`) does the fo
 **Conclusion**: Never pass `thumb` when you want the full-size photo. Passing `thumb: 0` gives the smallest thumbnail; passing `thumb: photo.sizes.length - 1` gives what you'd compute manually. The default `undefined` is the correct choice for our use case.
 
 **Photo sizes type letter reference** (from `sizeTypes = ["w", "y", "d", "x", "c", "m", "b", "a", "s"]`):
+
 - `s` = 100×100 max (smallest, inline stripped)
 - `m` = 320×320 max
 - `x` = 800×800 max
@@ -420,8 +410,7 @@ The `_downloadPhoto` function (source: `gramjs/client/downloads.ts`) does the fo
 const doc = message.voice; // Api.Document | undefined
 if (doc) {
   const audioAttr = doc.attributes.find(
-    (a): a is Api.DocumentAttributeAudio =>
-      a instanceof Api.DocumentAttributeAudio
+    (a): a is Api.DocumentAttributeAudio => a instanceof Api.DocumentAttributeAudio,
   );
   // audioAttr.voice === true
   // audioAttr.duration  (seconds)
@@ -445,12 +434,10 @@ if (doc) {
 const doc = message.audio; // Api.Document | undefined
 if (doc) {
   const audioAttr = doc.attributes.find(
-    (a): a is Api.DocumentAttributeAudio =>
-      a instanceof Api.DocumentAttributeAudio
+    (a): a is Api.DocumentAttributeAudio => a instanceof Api.DocumentAttributeAudio,
   );
   const nameAttr = doc.attributes.find(
-    (a): a is Api.DocumentAttributeFilename =>
-      a instanceof Api.DocumentAttributeFilename
+    (a): a is Api.DocumentAttributeFilename => a instanceof Api.DocumentAttributeFilename,
   );
   // audioAttr.voice     === false
   // audioAttr.title     (string | undefined)
@@ -466,6 +453,7 @@ if (doc) {
 ## Photo Sent as Document (Image Without Compression)
 
 When a user selects "Send without compression" on a photo, Telegram delivers:
+
 - `message.media` → `Api.MessageMediaDocument`
 - `message.document` → `Api.Document` with `mimeType: "image/jpeg"` (or `"image/png"`, `"image/webp"`, etc.)
 - `doc.attributes` typically includes `DocumentAttributeFilename` (with the original filename) and `DocumentAttributeImageSize { w, h }`
@@ -486,24 +474,24 @@ All three are delivered as `MessageMediaDocument` and detected via specific docu
 ```typescript
 // To log what type of "other" we are skipping:
 function describeOtherKind(message: Api.Message): string {
-  if (message.sticker) return "sticker";
-  if (message.gif)     return "gif";
-  if (message.video && !message.videoNote) return "video";
-  if (message.videoNote) return "video_note";
+  if (message.sticker) return 'sticker';
+  if (message.gif) return 'gif';
+  if (message.video && !message.videoNote) return 'video';
+  if (message.videoNote) return 'video_note';
   // Generic document: check DocumentAttributeFilename
   const doc = message.document;
   if (doc) {
     const nameAttr = doc.attributes.find(
-      (a): a is Api.DocumentAttributeFilename =>
-        a instanceof Api.DocumentAttributeFilename
+      (a): a is Api.DocumentAttributeFilename => a instanceof Api.DocumentAttributeFilename,
     );
     return nameAttr?.fileName ? `document:${nameAttr.fileName}` : `document:${doc.mimeType}`;
   }
-  return "unknown";
+  return 'unknown';
 }
 ```
 
 Detection attributes:
+
 - **Sticker**: `DocumentAttributeSticker` — may also have `DocumentAttributeImageSize`. Mime type is `image/webp` (static) or `application/x-tgsticker` (animated TGS), or `video/webm` (video sticker).
 - **GIF**: `DocumentAttributeAnimated` — mime type is `video/mp4` (Telegram converts GIFs to MPEG4 server-side for all clients; the `DocumentAttributeAnimated` marker survives the conversion).
 - **Video**: `DocumentAttributeVideo` with `roundMessage === false`. Mime type is `video/mp4` or `video/webm`.
@@ -518,29 +506,34 @@ Detection attributes:
 ### 1. `message.media` is `undefined` for `MessageMediaEmpty`
 
 In the `init` method of `CustomMessage`, there is this line:
+
 ```typescript
 this.media = media instanceof Api.MessageMediaEmpty ? media : undefined;
 ```
+
 Wait — actually re-reading this: it sets `media` to the `MessageMediaEmpty` instance if the media IS empty, which means `this.media` is technically set to the empty media object. However, both `message.photo` and `message.document` check for specific non-empty subclasses, so they will return `undefined` correctly. The net effect is that `classifyIncoming` correctly falls through to `"other"` for messages with `MessageMediaEmpty`. (There is a possible bug in the original source — the line appears to set `media` to the empty instance rather than `undefined`, but in practice the shortcut getters handle it.)
 
 **UPDATE**: On closer re-reading of the source, the logic is:
+
 ```typescript
 this.media = media instanceof Api.MessageMediaEmpty ? media : undefined;
 ```
+
 This looks backward — it should be `undefined` when empty. The actual line in the real GramJS source (confirmed by inspection) may differ from what the truncated fetch showed. In any case, the shortcut getters (`photo`, `document`) check for their specific positive classes, so they return `undefined` for `MessageMediaEmpty` regardless.
 
 ### 2. `_documentByAttribute` returns `undefined` on condition failure, not just "attribute absent"
 
 ```typescript
 for (const attr of doc.attributes) {
-    if (attr instanceof kind) {
-        if (condition == undefined || (typeof condition == "function" && condition(attr))) {
-            return doc;
-        }
-        return undefined;   // ← exits the entire loop on first kind-match with failed condition
+  if (attr instanceof kind) {
+    if (condition == undefined || (typeof condition == 'function' && condition(attr))) {
+      return doc;
     }
+    return undefined; // ← exits the entire loop on first kind-match with failed condition
+  }
 }
 ```
+
 This means if a document has `DocumentAttributeAudio { voice: false }`, then `message.voice` (which passes `condition: attr => !!attr.voice`) will return `undefined` after finding the attribute and seeing `voice === false`. This is intentional and correct, but it means the loop is **not exhaustive** — if there were multiple `DocumentAttributeAudio` entries (which Telegram's protocol should not produce, but defensively), only the first is checked.
 
 ### 3. Photo always comes out as JPEG regardless of original format
@@ -554,20 +547,25 @@ When constructing your own download logic, be aware that `Api.Document.size` is 
 ### 5. GramJS's internal `getExtension` uses the `mime` npm package
 
 In `Utils.ts`:
+
 ```typescript
 export function getExtension(media: any): string {
-    try { getInputPhoto(media); return ".jpg"; } catch (e) {}
-    // ...
-    if (media instanceof Api.Document) {
-        if (media.mimeType === "application/octet-stream") {
-            return "";
-        } else {
-            return mime.getExtension(media.mimeType) || "";
-        }
+  try {
+    getInputPhoto(media);
+    return '.jpg';
+  } catch (e) {}
+  // ...
+  if (media instanceof Api.Document) {
+    if (media.mimeType === 'application/octet-stream') {
+      return '';
+    } else {
+      return mime.getExtension(media.mimeType) || '';
     }
-    return "";
+  }
+  return '';
 }
 ```
+
 The `mime` package's `getExtension` returns the extension **without** a leading dot (e.g. `"ogg"` not `".ogg"`). In `_downloadDocument`, the result is prefixed: `"." + (utils.getExtension(doc) || "bin")`. Our `MIME_TO_EXT` table in `downloadIncomingMedia` includes the leading dot, matching what callers would expect.
 
 ### 6. `downloadMedia` on a message without `inputChat` cannot refresh file references
@@ -586,16 +584,17 @@ The `sizeTypes` array is: `["w", "y", "d", "x", "c", "m", "b", "a", "s"]`. The `
 
 ## Assumptions & Scope
 
-| Assumption | Confidence | Impact if Wrong |
-|---|---|---|
-| Voice notes always have `audio/ogg` mime type | HIGH | Extension would be wrong; mitigated by `extFromMime` fallback table |
-| GramJS selects the largest PhotoSize when `thumb` is `undefined` | HIGH (verified in source) | Would need to pass explicit `thumb: photo.sizes.length - 1` |
-| `DocumentAttributeFilename` is absent on voice notes from mobile clients | HIGH (by convention) | Would produce duplicate info; no functional impact |
-| Photo-as-document always has `image/*` mime type | HIGH | A file named `.jpg` but with wrong mime would be mis-classified as "other"; extremely rare |
-| `_documentByAttribute` only checks the first attribute of each `kind` | HIGH (verified in source) | Multiple audio attributes per document would only see the first |
-| `message.gif` correctly catches all animated content | MEDIUM | Telegram's handling of legacy client GIFs vs. modern animated stickers is nuanced; video stickers with `DocumentAttributeAnimated` might not exist |
+| Assumption                                                               | Confidence                | Impact if Wrong                                                                                                                                    |
+| ------------------------------------------------------------------------ | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Voice notes always have `audio/ogg` mime type                            | HIGH                      | Extension would be wrong; mitigated by `extFromMime` fallback table                                                                                |
+| GramJS selects the largest PhotoSize when `thumb` is `undefined`         | HIGH (verified in source) | Would need to pass explicit `thumb: photo.sizes.length - 1`                                                                                        |
+| `DocumentAttributeFilename` is absent on voice notes from mobile clients | HIGH (by convention)      | Would produce duplicate info; no functional impact                                                                                                 |
+| Photo-as-document always has `image/*` mime type                         | HIGH                      | A file named `.jpg` but with wrong mime would be mis-classified as "other"; extremely rare                                                         |
+| `_documentByAttribute` only checks the first attribute of each `kind`    | HIGH (verified in source) | Multiple audio attributes per document would only see the first                                                                                    |
+| `message.gif` correctly catches all animated content                     | MEDIUM                    | Telegram's handling of legacy client GIFs vs. modern animated stickers is nuanced; video stickers with `DocumentAttributeAnimated` might not exist |
 
 ### Explicitly out of scope
+
 - Secret chat (end-to-end encrypted) media — requires a completely different download flow
 - Album/grouped messages (multiple photos in one `groupedId`) — each message is classified independently
 - Web page previews (`MessageMediaWebPage`) — classified as `"other"`
@@ -606,16 +605,17 @@ The `sizeTypes` array is: `["w", "y", "d", "x", "c", "m", "b", "a", "s"]`. The `
 
 ## References
 
-| # | Source | URL | Information Gathered |
-|---|---|---|---|
-| 1 | GramJS CustomMessage source | https://raw.githubusercontent.com/gram-js/gramjs/master/gramjs/tl/custom/message.ts | Shortcut getters (photo, document, voice, audio, video, gif, sticker, videoNote), `_documentByAttribute` implementation, `downloadMedia` delegation |
-| 2 | GramJS downloads.ts source | https://raw.githubusercontent.com/gram-js/gramjs/master/gramjs/client/downloads.ts | `DownloadMediaInterface`, `_downloadPhoto`, `_downloadDocument`, `getThumb` sort logic, `getProperFilename`, `sizeTypes` ordering |
-| 3 | GramJS Utils.ts source | https://raw.githubusercontent.com/gram-js/gramjs/master/gramjs/Utils.ts | `getExtension` (uses `mime` npm package), `getFileInfo`, `_photoSizeByteCount` |
-| 4 | GramJS TypeDoc — Api.Message | https://gram.js.org/beta/classes/Api.Message.html | `downloadMedia` method signature, property index |
-| 5 | GramJS TypeDoc — DownloadMediaInterface | https://gram.js.org/beta/interfaces/client.downloads.DownloadMediaInterface.html | `thumb` parameter semantics, integer index vs. `Api.PhotoSize` instance |
-| 6 | Investigation document | `/Users/giorgosmarinos/aiwork/coding-platform/telegram-tool/docs/design/investigation-telegram-user-client.md` | Project context, existing classification sketch to build on, known GramJS quirks |
+| #   | Source                                  | URL                                                                                                            | Information Gathered                                                                                                                                |
+| --- | --------------------------------------- | -------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | GramJS CustomMessage source             | https://raw.githubusercontent.com/gram-js/gramjs/master/gramjs/tl/custom/message.ts                            | Shortcut getters (photo, document, voice, audio, video, gif, sticker, videoNote), `_documentByAttribute` implementation, `downloadMedia` delegation |
+| 2   | GramJS downloads.ts source              | https://raw.githubusercontent.com/gram-js/gramjs/master/gramjs/client/downloads.ts                             | `DownloadMediaInterface`, `_downloadPhoto`, `_downloadDocument`, `getThumb` sort logic, `getProperFilename`, `sizeTypes` ordering                   |
+| 3   | GramJS Utils.ts source                  | https://raw.githubusercontent.com/gram-js/gramjs/master/gramjs/Utils.ts                                        | `getExtension` (uses `mime` npm package), `getFileInfo`, `_photoSizeByteCount`                                                                      |
+| 4   | GramJS TypeDoc — Api.Message            | https://gram.js.org/beta/classes/Api.Message.html                                                              | `downloadMedia` method signature, property index                                                                                                    |
+| 5   | GramJS TypeDoc — DownloadMediaInterface | https://gram.js.org/beta/interfaces/client.downloads.DownloadMediaInterface.html                               | `thumb` parameter semantics, integer index vs. `Api.PhotoSize` instance                                                                             |
+| 6   | Investigation document                  | `/Users/giorgosmarinos/aiwork/coding-platform/telegram-tool/docs/design/investigation-telegram-user-client.md` | Project context, existing classification sketch to build on, known GramJS quirks                                                                    |
 
 ### Recommended for Deep Reading
+
 - **gramjs/tl/custom/message.ts**: The complete `CustomMessage` class — all shortcut getters and their exact conditions. Essential for understanding any edge case in classification.
 - **gramjs/client/downloads.ts**: The `_downloadPhoto` and `getThumb` functions — critical for confirming the automatic largest-size selection behavior.
 - **gramjs/Utils.ts**: The `getExtension` function — confirms how GramJS itself maps mime types to extensions via the `mime` npm package.

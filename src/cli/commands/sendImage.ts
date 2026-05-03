@@ -18,7 +18,10 @@ function bigintReplacer(_key: string, value: unknown): unknown {
 export function sendImageCommand(): Command {
   return new Command('send-image')
     .description('Send an image as a Telegram photo.')
-    .requiredOption('--to <peer>', 'Recipient: @username, +phone (international), or numeric user ID')
+    .requiredOption(
+      '--to <peer>',
+      'Recipient: @username, +phone (international), or numeric user ID',
+    )
     .requiredOption('--file <path>', 'Absolute or relative path to the image file')
     .option('--caption <text>', 'Optional caption for the image')
     .action(async (opts: { to: string; file: string; caption?: string }) => {

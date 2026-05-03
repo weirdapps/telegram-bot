@@ -53,9 +53,7 @@ describe('withFloodRetry', () => {
     const floodErr = makeFloodWait(120);
     const fn = vi.fn<() => Promise<unknown>>().mockRejectedValue(floodErr);
 
-    await expect(
-      withFloodRetry(fn, { maxAutoWaitSeconds: 60 }),
-    ).rejects.toBe(floodErr);
+    await expect(withFloodRetry(fn, { maxAutoWaitSeconds: 60 })).rejects.toBe(floodErr);
 
     expect(fn).toHaveBeenCalledTimes(1);
   });
@@ -93,9 +91,7 @@ describe('withFloodRetry', () => {
     const floodErr = makeFloodWait(1);
     const fn = vi.fn<() => Promise<unknown>>().mockRejectedValue(floodErr);
 
-    await expect(
-      withFloodRetry(fn, { maxAutoWaitSeconds: 0 }),
-    ).rejects.toBe(floodErr);
+    await expect(withFloodRetry(fn, { maxAutoWaitSeconds: 0 })).rejects.toBe(floodErr);
 
     expect(fn).toHaveBeenCalledTimes(1);
   });

@@ -45,7 +45,10 @@ export interface ReplyRouterOutput {
 
 /** Estimate the spoken duration of text in seconds. */
 export function estimateSpeechDuration(text: string, language: SupportedLanguage): number {
-  const wordCount = text.trim().split(/\s+/).filter(w => w.length > 0).length;
+  const wordCount = text
+    .trim()
+    .split(/\s+/)
+    .filter((w) => w.length > 0).length;
   if (wordCount === 0) return 0;
   return Math.ceil((wordCount / WPM[language]) * 60);
 }
@@ -78,9 +81,10 @@ export function truncateForSpeech(
   while ((m = boundaryRegex.exec(candidate)) !== null) {
     lastBoundary = m.index + 1; // include the punctuation
   }
-  const cut = lastBoundary > targetWords * 2 // boundary must not be too early (≥ ~1/3 in)
-    ? candidate.slice(0, lastBoundary)
-    : candidate;
+  const cut =
+    lastBoundary > targetWords * 2 // boundary must not be too early (≥ ~1/3 in)
+      ? candidate.slice(0, lastBoundary)
+      : candidate;
   return `${cut.trim()} ${TRUNCATION_TAIL[language]}`.trim();
 }
 

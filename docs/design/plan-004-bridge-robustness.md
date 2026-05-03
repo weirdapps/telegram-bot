@@ -37,16 +37,16 @@ Was `{ SuccessfulExit: false, Crashed: true }` — does not restart on `process.
 
 ## Files changed
 
-| File | Change | LOC |
-|---|---|---|
-| `bridge/src/pluginLoader.ts` | `+ allowlist` option, helper renamed `parseDenylist` → `parseCommaSet` | +12, -1 |
-| `bridge/src/claudeRetry.ts` | NEW: `withRetryOnTimeout`, `isSdkSilenceError` | ~50 |
-| `bridge/src/claude.ts` | `SDK_SILENCE_TIMEOUT_MS` 90_000 → 300_000 + comment | +6, -1 |
-| `bridge/src/index.ts` | Wrap `askClaude` in `withRetryOnTimeout`, log `allowlistActive` | +25, -10 |
-| `.env` | Append `BRIDGE_PLUGIN_ALLOWLIST=…` (11 keys) + comments | +5 |
-| `~/Library/LaunchAgents/com.weirdapps.telegram-claude-bridge.plist` | `KeepAlive` policy → `true` | +5, -6 |
-| `test_scripts/test-pluginLoader.ts` | 5 new tests (allowlist behaviour) | +75 |
-| `test_scripts/test-claudeRetry.ts` | NEW: 9 tests (wrapper + matcher) | ~110 |
+| File                                                                | Change                                                                 | LOC      |
+| ------------------------------------------------------------------- | ---------------------------------------------------------------------- | -------- |
+| `bridge/src/pluginLoader.ts`                                        | `+ allowlist` option, helper renamed `parseDenylist` → `parseCommaSet` | +12, -1  |
+| `bridge/src/claudeRetry.ts`                                         | NEW: `withRetryOnTimeout`, `isSdkSilenceError`                         | ~50      |
+| `bridge/src/claude.ts`                                              | `SDK_SILENCE_TIMEOUT_MS` 90_000 → 300_000 + comment                    | +6, -1   |
+| `bridge/src/index.ts`                                               | Wrap `askClaude` in `withRetryOnTimeout`, log `allowlistActive`        | +25, -10 |
+| `.env`                                                              | Append `BRIDGE_PLUGIN_ALLOWLIST=…` (11 keys) + comments                | +5       |
+| `~/Library/LaunchAgents/com.weirdapps.telegram-claude-bridge.plist` | `KeepAlive` policy → `true`                                            | +5, -6   |
+| `test_scripts/test-pluginLoader.ts`                                 | 5 new tests (allowlist behaviour)                                      | +75      |
+| `test_scripts/test-claudeRetry.ts`                                  | NEW: 9 tests (wrapper + matcher)                                       | ~110     |
 
 Net: ~290 LOC. Tests: 174 → 183 (171 + new). Suite green; default `npm run typecheck` clean.
 
@@ -54,32 +54,32 @@ Net: ~290 LOC. Tests: 174 → 183 (171 + new). Suite green; default `npm run typ
 
 Chosen for direct relevance to a chat / Telegram surface:
 
-| Plugin | Why kept |
-|---|---|
-| `trading-hub@trading-marketplace` | `/portfolio`, `/briefing`, `/signals`, `/news`, `/risk` slash commands |
-| `etoro-trading@trading-marketplace` | `/portfolio`, `/trade`, `/close` |
-| `email-handler@communications-marketplace` | `/inbox-briefing`, `/mail-review`, `/send-mail`, `/triage-inbox` |
-| `outlook-bridge@communications-marketplace` | MCP server: calendar + mail (PRIMARY, per global CLAUDE.md) |
-| `meeting-prep@communications-marketplace` | `/meeting-prep`, `/meeting-debrief` |
-| `manage-apple-notes@integrations-marketplace` | Read/write notes via chat |
-| `manage-gmail@integrations-marketplace` | Personal Gmail access |
-| `manage-youtube@integrations-marketplace` | Search/transcripts |
-| `superpowers@claude-plugins-official` | Brainstorming, debugging, planning skills |
-| `context7@claude-plugins-official` | Library docs |
-| `microsoft-docs@claude-plugins-official` | M365/Azure docs |
+| Plugin                                        | Why kept                                                               |
+| --------------------------------------------- | ---------------------------------------------------------------------- |
+| `trading-hub@trading-marketplace`             | `/portfolio`, `/briefing`, `/signals`, `/news`, `/risk` slash commands |
+| `etoro-trading@trading-marketplace`           | `/portfolio`, `/trade`, `/close`                                       |
+| `email-handler@communications-marketplace`    | `/inbox-briefing`, `/mail-review`, `/send-mail`, `/triage-inbox`       |
+| `outlook-bridge@communications-marketplace`   | MCP server: calendar + mail (PRIMARY, per global CLAUDE.md)            |
+| `meeting-prep@communications-marketplace`     | `/meeting-prep`, `/meeting-debrief`                                    |
+| `manage-apple-notes@integrations-marketplace` | Read/write notes via chat                                              |
+| `manage-gmail@integrations-marketplace`       | Personal Gmail access                                                  |
+| `manage-youtube@integrations-marketplace`     | Search/transcripts                                                     |
+| `superpowers@claude-plugins-official`         | Brainstorming, debugging, planning skills                              |
+| `context7@claude-plugins-official`            | Library docs                                                           |
+| `microsoft-docs@claude-plugins-official`      | M365/Azure docs                                                        |
 
 Excluded (heavy / desktop-only / IDE-only): `chrome-devtools-mcp`, `playwright`, `figma`, `vercel`, `frontend-design`, `postiz`, `wordpress.com`, `manage-nano-banana`, `presentation-maker`, `creative-toolkit`, `document-skills`, `pyright-lsp`, `typescript-lsp`, `semgrep`, `hookify`, `plugin-dev`, `ralph-loop`, `code-review`, `code-simplifier`, `claude-md-management`, `claude-code-setup`, `learning-output-style`.
 
 ## Edge cases
 
-| Case | Behaviour |
-|---|---|
-| Allowlist empty/unset | All enabled plugins load (legacy) |
-| Plugin in both allowlist and denylist | Counted as `denied` (denylist wins for the explicit subset) |
-| Allowlist names a plugin that isn't enabled | Silently absent — never surfaces in `loadedKeys`, no warning (it would have been excluded by the enabled check anyway) |
-| First attempt times out, second succeeds | User sees only the second attempt's reply; `cleared sessionId` log line records the retry |
-| Both attempts time out | User sees `"error: SDK silent for 300s"`; sessionId cleared so next turn starts fresh |
-| Non-silence error (Vertex 403, network unreachable) | NOT retried — surfaces to user immediately with the original error message |
+| Case                                                | Behaviour                                                                                                              |
+| --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| Allowlist empty/unset                               | All enabled plugins load (legacy)                                                                                      |
+| Plugin in both allowlist and denylist               | Counted as `denied` (denylist wins for the explicit subset)                                                            |
+| Allowlist names a plugin that isn't enabled         | Silently absent — never surfaces in `loadedKeys`, no warning (it would have been excluded by the enabled check anyway) |
+| First attempt times out, second succeeds            | User sees only the second attempt's reply; `cleared sessionId` log line records the retry                              |
+| Both attempts time out                              | User sees `"error: SDK silent for 300s"`; sessionId cleared so next turn starts fresh                                  |
+| Non-silence error (Vertex 403, network unreachable) | NOT retried — surfaces to user immediately with the original error message                                             |
 
 ## Acceptance criteria
 

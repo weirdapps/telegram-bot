@@ -10,7 +10,10 @@ export function parseAllowlist(env: string | undefined): Set<string> {
       'TELEGRAM_BRIDGE_ALLOWED_SENDER_IDS is required (comma-separated numeric user IDs)',
     );
   }
-  const ids = env.split(',').map((s) => s.trim()).filter(Boolean);
+  const ids = env
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
   if (ids.length === 0) {
     throw new Error('TELEGRAM_BRIDGE_ALLOWED_SENDER_IDS is empty after parsing');
   }

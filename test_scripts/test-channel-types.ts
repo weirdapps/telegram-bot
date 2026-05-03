@@ -1,5 +1,10 @@
 import { describe, it, expectTypeOf } from 'vitest';
-import type { Channel, ChannelMessage, ChannelTextHandler, ChannelVoiceHandler } from '../bridge/src/channels/channel.js';
+import type {
+  Channel,
+  ChannelMessage,
+  ChannelTextHandler,
+  ChannelVoiceHandler,
+} from '../bridge/src/channels/channel.js';
 
 describe('Channel interface shape', () => {
   it('ChannelMessage has the documented fields', () => {

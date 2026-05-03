@@ -21,11 +21,7 @@ import type {
 } from './events.js';
 import type { PeerInput } from './peer.js';
 import { resolvePeer } from './peer.js';
-import {
-  classifyIncoming,
-  downloadIncomingMedia,
-  type IncomingKind,
-} from './media.js';
+import { classifyIncoming, downloadIncomingMedia, type IncomingKind } from './media.js';
 import { withFloodRetry } from './flood.js';
 import { buildTelegramClient } from './buildClient.js';
 import { createSessionStore } from '../config/session-store.js';
@@ -111,9 +107,7 @@ export class TelegramUserClient {
       // subsequent calls will fail with AUTH_KEY_UNREGISTERED.
       const authorized = await this.client.checkAuthorization();
       if (!authorized) {
-        throw new LoginRequiredError(
-          'No valid Telegram session. Run the `login` subcommand.',
-        );
+        throw new LoginRequiredError('No valid Telegram session. Run the `login` subcommand.');
       }
       this.connected = true;
       this.logger.info(
@@ -125,11 +119,7 @@ export class TelegramUserClient {
         throw err;
       }
       const msg = err instanceof Error ? err.message : String(err);
-      if (
-        /AUTH_KEY_UNREGISTERED|SESSION_REVOKED|USER_DEACTIVATED|AUTH_KEY_INVALID/i.test(
-          msg,
-        )
-      ) {
+      if (/AUTH_KEY_UNREGISTERED|SESSION_REVOKED|USER_DEACTIVATED|AUTH_KEY_INVALID/i.test(msg)) {
         throw new LoginRequiredError(
           'Stored Telegram session is invalid. Run the `login` subcommand.',
           err,
@@ -150,13 +140,14 @@ export class TelegramUserClient {
       await this.client.start({
         phoneNumber: callbacks.phoneNumber,
         phoneCode: callbacks.phoneCode,
-        password: passwordFn !== undefined
-          ? passwordFn
-          : async () => {
-              throw new LoginRequiredError(
-                'Account has 2FA enabled but no password callback was supplied.',
-              );
-            },
+        password:
+          passwordFn !== undefined
+            ? passwordFn
+            : async () => {
+                throw new LoginRequiredError(
+                  'Account has 2FA enabled but no password callback was supplied.',
+                );
+              },
         onError: (e: Error) => {
           if (callbacks.onError !== undefined) {
             try {
@@ -195,10 +186,7 @@ export class TelegramUserClient {
       );
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      this.logger.error(
-        { component: 'client', err: msg },
-        'failed to persist session file',
-      );
+      this.logger.error({ component: 'client', err: msg }, 'failed to persist session file');
       throw err;
     }
     return sessionString;
@@ -226,10 +214,7 @@ export class TelegramUserClient {
           'expected post-disconnect error (gramjs#243) — suppressed',
         );
       } else {
-        this.logger.error(
-          { component: 'client', err: msg },
-          'unexpected error during disconnect',
-        );
+        this.logger.error({ component: 'client', err: msg }, 'unexpected error during disconnect');
       }
     }
 
@@ -266,10 +251,11 @@ export class TelegramUserClient {
   async sendText(peer: PeerInput, text: string): Promise<SentMessageInfo> {
     this.assertConnected();
     const resolved = await resolvePeer(this.client, peer, this.logger);
-    const sent = await withFloodRetry(
-      () => this.client.sendMessage(resolved, { message: text }),
-      { logger: this.logger, maxAutoWaitSeconds: 60, operation: 'sendText' },
-    );
+    const sent = await withFloodRetry(() => this.client.sendMessage(resolved, { message: text }), {
+      logger: this.logger,
+      maxAutoWaitSeconds: 60,
+      operation: 'sendText',
+    });
     const info = buildSentInfo(sent, peer);
     this.logger.info(
       {
@@ -288,11 +274,7 @@ export class TelegramUserClient {
    * Sends an image as a Telegram photo. `filePath` must be absolute. Raises
    * the standard Node ENOENT error if the file is missing.
    */
-  async sendImage(
-    peer: PeerInput,
-    filePath: string,
-    caption?: string,
-  ): Promise<SentMessageInfo> {
+  async sendImage(peer: PeerInput, filePath: string, caption?: string): Promise<SentMessageInfo> {
     this.assertConnected();
     await fs.stat(filePath); // throws ENOENT on missing
     const resolved = await resolvePeer(this.client, peer, this.logger);
@@ -391,9 +373,7 @@ export class TelegramUserClient {
         this.client.sendFile(resolved, {
           file,
           voiceNote: true,
-          attributes: [
-            new Api.DocumentAttributeAudio({ voice: true, duration }),
-          ],
+          attributes: [new Api.DocumentAttributeAudio({ voice: true, duration })],
           ...(caption !== undefined ? { caption } : {}),
         }),
       { logger: this.logger, maxAutoWaitSeconds: 60, operation: 'sendVoice' },
@@ -475,10 +455,7 @@ export class TelegramUserClient {
     }
     if (this.boundHandler !== null) {
       try {
-        this.client.removeEventHandler(
-          this.boundHandler,
-          new NewMessage({ incoming: true }),
-        );
+        this.client.removeEventHandler(this.boundHandler, new NewMessage({ incoming: true }));
       } catch {
         // GramJS throws if handler isn't registered; safe to ignore.
       }
@@ -535,18 +512,14 @@ export class TelegramUserClient {
           }
         } catch (err: unknown) {
           const errMsg = err instanceof Error ? err.message : String(err);
-          this.logger.error(
-            { component: 'client', kind, err: errMsg },
-            'media download failed',
-          );
+          this.logger.error({ component: 'client', kind, err: errMsg }, 'media download failed');
           mediaPath = null;
         }
       }
 
       const chatIdBig = toBigInt(msg.chatId);
-      const senderIdBig = msg.senderId !== undefined && msg.senderId !== null
-        ? toBigInt(msg.senderId)
-        : null;
+      const senderIdBig =
+        msg.senderId !== undefined && msg.senderId !== null ? toBigInt(msg.senderId) : null;
 
       const incoming: IncomingMessage = {
         kind,
@@ -554,7 +527,7 @@ export class TelegramUserClient {
         chatId: chatIdBig,
         senderId: senderIdBig,
         date: new Date(msg.date * 1000),
-        text: (msg.message !== undefined && msg.message !== '') ? msg.message : null,
+        text: msg.message !== undefined && msg.message !== '' ? msg.message : null,
         mediaPath,
         rawMessage: msg,
       };
@@ -580,10 +553,7 @@ export class TelegramUserClient {
     }
   }
 
-  private async dispatchToHandlers(
-    kind: IncomingKind,
-    incoming: IncomingMessage,
-  ): Promise<void> {
+  private async dispatchToHandlers(kind: IncomingKind, incoming: IncomingMessage): Promise<void> {
     const targets: MessageHandler[] = [];
     const kindBucket = this.handlers.get(kind);
     if (kindBucket !== undefined) targets.push(...kindBucket);

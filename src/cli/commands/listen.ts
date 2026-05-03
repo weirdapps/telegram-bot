@@ -8,12 +8,7 @@
 import { Command } from 'commander';
 import { existsSync, readFileSync } from 'node:fs';
 
-import {
-  TelegramUserClient,
-  loadConfig,
-  createLogger,
-  LoginRequiredError,
-} from '../../index.js';
+import { TelegramUserClient, loadConfig, createLogger, LoginRequiredError } from '../../index.js';
 import type { IncomingMessage } from '../../index.js';
 import { installGracefulShutdown } from '../../client/shutdown.js';
 
@@ -38,9 +33,7 @@ export function listenCommand(): Command {
         : '';
 
       if (!sessionString) {
-        throw new LoginRequiredError(
-          'No session found. Run `telegram-tool login` first.',
-        );
+        throw new LoginRequiredError('No session found. Run `telegram-tool login` first.');
       }
 
       const client = new TelegramUserClient({

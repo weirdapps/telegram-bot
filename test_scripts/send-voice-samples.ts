@@ -12,32 +12,25 @@
 
 import 'dotenv/config';
 import { existsSync, readFileSync } from 'node:fs';
-import {
-  TelegramUserClient,
-  loadConfig,
-  createLogger,
-} from '../src/index.js';
-import {
-  createTtsClient,
-  synthesize,
-} from '../bridge/src/tts/google.js';
+import { TelegramUserClient, loadConfig, createLogger } from '../src/index.js';
+import { createTtsClient, synthesize } from '../bridge/src/tts/google.js';
 import { loadVoiceBridgeConfig } from '../bridge/src/voiceBridgeConfig.js';
 
 const SAMPLE_TEXT =
   'Καλησπέρα. Σήμερα τα μάρκετ έκλεισαν θετικά, με τον S&P 500 να ανεβαίνει ένα κόμμα δύο τοις εκατό. Πες μου ποια φωνή προτιμάς.';
 
 interface VoicePick {
-  name: string;     // full TTS voice name
-  label: string;    // human-readable label for the Telegram caption
+  name: string; // full TTS voice name
+  label: string; // human-readable label for the Telegram caption
 }
 
 const VOICES: VoicePick[] = [
-  { name: 'el-GR-Chirp3-HD-Aoede',     label: '♀ Aoede — warm, friendly (current default)' },
-  { name: 'el-GR-Chirp3-HD-Despina',   label: '♀ Despina — clear, neutral, precise' },
-  { name: 'el-GR-Chirp3-HD-Leda',      label: '♀ Leda — softer, slightly breathier' },
-  { name: 'el-GR-Chirp3-HD-Charon',    label: '♂ Charon — calm, measured, low pitch (best for car)' },
-  { name: 'el-GR-Chirp3-HD-Algieba',   label: '♂ Algieba — smooth, warm, story-telling' },
-  { name: 'el-GR-Chirp3-HD-Iapetus',   label: '♂ Iapetus — authoritative, slightly higher pitch' },
+  { name: 'el-GR-Chirp3-HD-Aoede', label: '♀ Aoede — warm, friendly (current default)' },
+  { name: 'el-GR-Chirp3-HD-Despina', label: '♀ Despina — clear, neutral, precise' },
+  { name: 'el-GR-Chirp3-HD-Leda', label: '♀ Leda — softer, slightly breathier' },
+  { name: 'el-GR-Chirp3-HD-Charon', label: '♂ Charon — calm, measured, low pitch (best for car)' },
+  { name: 'el-GR-Chirp3-HD-Algieba', label: '♂ Algieba — smooth, warm, story-telling' },
+  { name: 'el-GR-Chirp3-HD-Iapetus', label: '♂ Iapetus — authoritative, slightly higher pitch' },
 ];
 
 async function main(): Promise<void> {
@@ -80,7 +73,7 @@ async function main(): Promise<void> {
     await tg.sendText(targetId, v.label);
     await tg.sendVoice(targetId, synth.audio, synth.durationSeconds);
     // Small pause so Telegram delivers them in order
-    await new Promise(r => setTimeout(r, 700));
+    await new Promise((r) => setTimeout(r, 700));
   }
 
   await tg.sendText(
@@ -93,7 +86,7 @@ async function main(): Promise<void> {
   console.log('all samples sent.');
 }
 
-main().catch(err => {
+main().catch((err) => {
   console.error('FATAL', err);
   process.exit(1);
 });

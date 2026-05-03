@@ -16,12 +16,14 @@ async function main(): Promise<void> {
     const tts = new TextToSpeechClient({ projectId: PROJECT_ID });
     const [resp] = await tts.listVoices({ languageCode: 'el-GR' });
     console.log(`    ok — ${resp.voices?.length ?? 0} Greek voices available`);
-    const chirp = resp.voices?.filter(v => v.name?.includes('Chirp3-HD')) ?? [];
-    console.log(`    Chirp3-HD voices: ${chirp.map(v => v.name).join(', ') || '(none)'}`);
+    const chirp = resp.voices?.filter((v) => v.name?.includes('Chirp3-HD')) ?? [];
+    console.log(`    Chirp3-HD voices: ${chirp.map((v) => v.name).join(', ') || '(none)'}`);
   } catch (err: any) {
     console.error('    FAIL:', err.message);
     if (err.code === 7 || /not.*enabled|not been used/i.test(err.message ?? '')) {
-      console.error(`    enable: gcloud --project=${PROJECT_ID} services enable texttospeech.googleapis.com`);
+      console.error(
+        `    enable: gcloud --project=${PROJECT_ID} services enable texttospeech.googleapis.com`,
+      );
     }
     process.exitCode = 1;
   }
@@ -31,8 +33,13 @@ async function main(): Promise<void> {
   try {
     const tts = new TextToSpeechClient({ projectId: PROJECT_ID });
     const [resp] = await tts.listVoices({ languageCode: 'en-US' });
-    const chirp = resp.voices?.filter(v => v.name?.includes('Chirp3-HD')) ?? [];
-    console.log(`    ok — Chirp3-HD voices: ${chirp.slice(0, 5).map(v => v.name).join(', ')}${chirp.length > 5 ? '...' : ''}`);
+    const chirp = resp.voices?.filter((v) => v.name?.includes('Chirp3-HD')) ?? [];
+    console.log(
+      `    ok — Chirp3-HD voices: ${chirp
+        .slice(0, 5)
+        .map((v) => v.name)
+        .join(', ')}${chirp.length > 5 ? '...' : ''}`,
+    );
   } catch (err: any) {
     console.error('    FAIL:', err.message);
     process.exitCode = 1;
@@ -51,7 +58,9 @@ async function main(): Promise<void> {
   } catch (err: any) {
     console.error('    FAIL:', err.message);
     if (err.code === 7 || /not.*enabled|not been used/i.test(err.message ?? '')) {
-      console.error(`    enable: gcloud --project=${PROJECT_ID} services enable speech.googleapis.com`);
+      console.error(
+        `    enable: gcloud --project=${PROJECT_ID} services enable speech.googleapis.com`,
+      );
     }
     process.exitCode = 1;
   }
@@ -59,7 +68,7 @@ async function main(): Promise<void> {
   console.log(process.exitCode ? '\nFAILED' : '\nALL OK');
 }
 
-main().catch(err => {
+main().catch((err) => {
   console.error('unhandled:', err);
   process.exit(2);
 });

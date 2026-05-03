@@ -4,6 +4,7 @@
 **Status**: Draft — awaiting user sign-off on Section B assumptions
 **Authored**: 2026-04-22
 **Inputs**:
+
 - `docs/design/refined-request-telegram-user-client.md`
 - `docs/design/investigation-telegram-user-client.md`
 - `docs/research/gramjs-media-classification.md`
@@ -26,24 +27,24 @@
 
 These decisions are carried forward from the refined spec (§8) and the investigation. Each one is being assumed unless the user explicitly overrides it. They are called out here so the user can reject any assumption before implementation starts.
 
-| # | Assumption | Source | Override if |
-|---|---|---|---|
-| B-1 | **MTProto library = GramJS** (`telegram` v2.26.x). Pinned to the currently-latest `2.26.22`. | Refined §8.1, Investigation §1 | User prefers mtcute, TDLib (`tdl`), or another client. |
-| B-2 | **Runtime = Node 20+** (LTS), **TypeScript strict** (`noImplicitAny`, `strictNullChecks`, `noUncheckedIndexedAccess`), **target ES2022**, `"engines"` declared in `package.json`. | Refined §6, Investigation §8 | User wants a different minimum Node or different TS target. |
-| B-3 | **CLI framework = `commander`**. Chosen over yargs/oclif/citty for its fluent `.requiredOption` API and small footprint. | Investigation §6 | User prefers another CLI framework. |
-| B-4 | **Logger = `pino`** with `redact` paths for secret fields (session, password, phoneCode, apiHash, phoneNumber). `pino-pretty` is a dev-only dep for TTY rendering. | Refined §10, Investigation §8 | User prefers another logger. |
-| B-5 | **Config loader = `dotenv` + hand-rolled typed getter** (no `zod`). Rationale: for a 6-variable config, a typed getter enforces "no fallbacks" more clearly than a schema library, and keeps the runtime dep count low. `zod` can be introduced later with a trivial refactor if the config grows. | Investigation §7; research on "no fallbacks" rule | User prefers `zod` or another schema library now (flag this upfront to avoid a Phase 2 rewrite). |
-| B-6 | **Recipient resolution order: `@username` → phone → numeric ID**, with a caller-side override available via an optional hint parameter. | Refined §2.2 and §8.3 | User wants a different default order. |
-| B-7 | **Session storage = plain-file `StringSession` at `TELEGRAM_SESSION_PATH`**, chmod `0600`. Encryption at rest is deferred to future hardening (logged as a pending item). | Refined §8.2, Investigation §2 | User requires encrypted-at-rest session in v1. |
-| B-8 | **Media auto-download scope (v1)**: `photo`, `voice`, `audio` are downloaded. Everything else (sticker, GIF, video, video note, generic document) is logged as `kind=other` and skipped. | Refined §7.1–7.4 (images/voice/audio only), research §Table | User wants video or generic-document auto-download. |
-| B-9 | **Outgoing voice / audio messages are NOT in v1.** Sending audio was not requested; only receiving. | Refined §4 (explicitly out of scope) | User wants outgoing voice/audio in v1 (significant scope addition). |
-| B-10 | **`TELEGRAM_LOG_LEVEL` is required** (no fallback to `info`) to comply with CLAUDE.md. If the user wants `info` as a default, that exception must be registered in the project memory file before implementation. | Refined §5 note, CLAUDE.md | User wants a log-level default. |
-| B-11 | **2FA password source**: prompted on stdin via `input` during `login`. An **optional** `TELEGRAM_2FA_PASSWORD` env var is *not* provided in v1 (env-based 2FA slightly weakens security vs. interactive prompt; research suggested offering it, we defer). | Refined §8.12 | User wants `TELEGRAM_2FA_PASSWORD` support for unattended re-login. |
-| B-12 | **Filename convention for downloaded media**: `<iso-utc-timestamp>_<chatId>_<messageId>_<kind>.<ext>` (e.g. `2026-04-22T14-30-00-000Z_123_42_photo.jpg`). ISO-with-dashes instead of colons/dots so it is filesystem-safe across macOS/Linux. | Refined §7.5, Research §Ready-to-Paste | User wants a different scheme (e.g. `senderId` instead of `chatId`). The refined spec literally says `<senderId>_<messageId>` — this plan tracks `chatId` because `senderId` is unstable when a message is forwarded by a bot; revisit if user objects. |
-| B-13 | **Listener scope: private (1:1) chats only**, via `event.isPrivate` filter. Groups/channels ignored by default but the classifier/downloader code paths do not bake in a "private only" assumption at the type level, so a future flag can widen the filter. | Refined §8.8, §4 | User wants group/channel listening in v1. |
-| B-14 | **Testing framework = Vitest** (`vitest` + `@vitest/coverage-v8`). Tests live in `test_scripts/` per CLAUDE.md; Vitest picks them up by default and we configure `include` to point at that folder. Integration tests that hit real Telegram are gated behind `TELEGRAM_INTEGRATION=1`. | Refined §6 (opt-in), CLAUDE.md | User prefers `node:test` or Jest. |
-| B-15 | **Dev runner = `tsx`** for `npm run dev` (no build step). Production entry compiles to `dist/` via `tsc`. | Standard Node+TS pattern | User wants `ts-node`, `bun`, or ESM-only. |
-| B-16 | **`@cryptography/aes` native crypto**: GramJS bundles this as a JS dep; **no C/C++ native build step is needed**. Confirmed via investigation — install works on macOS and Linux without `node-gyp`. | Investigation §1 | (Informational — not a decision point.) |
+| #    | Assumption                                                                                                                                                                                                                                                                                         | Source                                                      | Override if                                                                                                                                                                                                                                             |
+| ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| B-1  | **MTProto library = GramJS** (`telegram` v2.26.x). Pinned to the currently-latest `2.26.22`.                                                                                                                                                                                                       | Refined §8.1, Investigation §1                              | User prefers mtcute, TDLib (`tdl`), or another client.                                                                                                                                                                                                  |
+| B-2  | **Runtime = Node 20+** (LTS), **TypeScript strict** (`noImplicitAny`, `strictNullChecks`, `noUncheckedIndexedAccess`), **target ES2022**, `"engines"` declared in `package.json`.                                                                                                                  | Refined §6, Investigation §8                                | User wants a different minimum Node or different TS target.                                                                                                                                                                                             |
+| B-3  | **CLI framework = `commander`**. Chosen over yargs/oclif/citty for its fluent `.requiredOption` API and small footprint.                                                                                                                                                                           | Investigation §6                                            | User prefers another CLI framework.                                                                                                                                                                                                                     |
+| B-4  | **Logger = `pino`** with `redact` paths for secret fields (session, password, phoneCode, apiHash, phoneNumber). `pino-pretty` is a dev-only dep for TTY rendering.                                                                                                                                 | Refined §10, Investigation §8                               | User prefers another logger.                                                                                                                                                                                                                            |
+| B-5  | **Config loader = `dotenv` + hand-rolled typed getter** (no `zod`). Rationale: for a 6-variable config, a typed getter enforces "no fallbacks" more clearly than a schema library, and keeps the runtime dep count low. `zod` can be introduced later with a trivial refactor if the config grows. | Investigation §7; research on "no fallbacks" rule           | User prefers `zod` or another schema library now (flag this upfront to avoid a Phase 2 rewrite).                                                                                                                                                        |
+| B-6  | **Recipient resolution order: `@username` → phone → numeric ID**, with a caller-side override available via an optional hint parameter.                                                                                                                                                            | Refined §2.2 and §8.3                                       | User wants a different default order.                                                                                                                                                                                                                   |
+| B-7  | **Session storage = plain-file `StringSession` at `TELEGRAM_SESSION_PATH`**, chmod `0600`. Encryption at rest is deferred to future hardening (logged as a pending item).                                                                                                                          | Refined §8.2, Investigation §2                              | User requires encrypted-at-rest session in v1.                                                                                                                                                                                                          |
+| B-8  | **Media auto-download scope (v1)**: `photo`, `voice`, `audio` are downloaded. Everything else (sticker, GIF, video, video note, generic document) is logged as `kind=other` and skipped.                                                                                                           | Refined §7.1–7.4 (images/voice/audio only), research §Table | User wants video or generic-document auto-download.                                                                                                                                                                                                     |
+| B-9  | **Outgoing voice / audio messages are NOT in v1.** Sending audio was not requested; only receiving.                                                                                                                                                                                                | Refined §4 (explicitly out of scope)                        | User wants outgoing voice/audio in v1 (significant scope addition).                                                                                                                                                                                     |
+| B-10 | **`TELEGRAM_LOG_LEVEL` is required** (no fallback to `info`) to comply with CLAUDE.md. If the user wants `info` as a default, that exception must be registered in the project memory file before implementation.                                                                                  | Refined §5 note, CLAUDE.md                                  | User wants a log-level default.                                                                                                                                                                                                                         |
+| B-11 | **2FA password source**: prompted on stdin via `input` during `login`. An **optional** `TELEGRAM_2FA_PASSWORD` env var is _not_ provided in v1 (env-based 2FA slightly weakens security vs. interactive prompt; research suggested offering it, we defer).                                         | Refined §8.12                                               | User wants `TELEGRAM_2FA_PASSWORD` support for unattended re-login.                                                                                                                                                                                     |
+| B-12 | **Filename convention for downloaded media**: `<iso-utc-timestamp>_<chatId>_<messageId>_<kind>.<ext>` (e.g. `2026-04-22T14-30-00-000Z_123_42_photo.jpg`). ISO-with-dashes instead of colons/dots so it is filesystem-safe across macOS/Linux.                                                      | Refined §7.5, Research §Ready-to-Paste                      | User wants a different scheme (e.g. `senderId` instead of `chatId`). The refined spec literally says `<senderId>_<messageId>` — this plan tracks `chatId` because `senderId` is unstable when a message is forwarded by a bot; revisit if user objects. |
+| B-13 | **Listener scope: private (1:1) chats only**, via `event.isPrivate` filter. Groups/channels ignored by default but the classifier/downloader code paths do not bake in a "private only" assumption at the type level, so a future flag can widen the filter.                                       | Refined §8.8, §4                                            | User wants group/channel listening in v1.                                                                                                                                                                                                               |
+| B-14 | **Testing framework = Vitest** (`vitest` + `@vitest/coverage-v8`). Tests live in `test_scripts/` per CLAUDE.md; Vitest picks them up by default and we configure `include` to point at that folder. Integration tests that hit real Telegram are gated behind `TELEGRAM_INTEGRATION=1`.            | Refined §6 (opt-in), CLAUDE.md                              | User prefers `node:test` or Jest.                                                                                                                                                                                                                       |
+| B-15 | **Dev runner = `tsx`** for `npm run dev` (no build step). Production entry compiles to `dist/` via `tsc`.                                                                                                                                                                                          | Standard Node+TS pattern                                    | User wants `ts-node`, `bun`, or ESM-only.                                                                                                                                                                                                               |
+| B-16 | **`@cryptography/aes` native crypto**: GramJS bundles this as a JS dep; **no C/C++ native build step is needed**. Confirmed via investigation — install works on macOS and Linux without `node-gyp`.                                                                                               | Investigation §1                                            | (Informational — not a decision point.)                                                                                                                                                                                                                 |
 
 **Deliverable gate**: phase 2 onward assumes all the above are accepted unless the user flags otherwise. The Designer phase will lock these choices into `docs/design/project-design.md`.
 
@@ -62,7 +63,7 @@ Five phases, each with explicit tasks, files, acceptance criteria, and verificat
 1. Create `package.json` with:
    - `"name": "telegram-user-client"`, `"version": "0.1.0"`, `"private": true`
    - `"engines": { "node": ">=20" }`
-   - `"type": "module"` (ESM) **or** CommonJS — pick ESM (GramJS works under both; ESM is forward-compatible). *Flag*: if the Designer prefers CJS for ergonomics with `commander`, note in Phase 2.
+   - `"type": "module"` (ESM) **or** CommonJS — pick ESM (GramJS works under both; ESM is forward-compatible). _Flag_: if the Designer prefers CJS for ergonomics with `commander`, note in Phase 2.
    - Scripts:
      - `"typecheck": "tsc --noEmit"`
      - `"build": "tsc"`
@@ -85,14 +86,17 @@ Five phases, each with explicit tasks, files, acceptance criteria, and verificat
 10. Create empty folders: `src/`, `test_scripts/`, `docs/design/` (already exists), `docs/reference/`, `prompts/`.
 
 **Files touched.**
+
 - `package.json`, `tsconfig.json`, `.gitignore`, `.env.example`, `README.md`, `Issues - Pending Items.md`, `src/index.ts`.
 
 **Acceptance criteria.**
+
 - `npm install` completes with no errors.
 - `npm run typecheck` exits 0 against the empty `src/index.ts`.
 - `npm test` exits 0 (no tests yet — Vitest reports "no test files found" but exits 0 with `--passWithNoTests` configured in `vite.config.ts` or equivalent).
 
 **Verification commands.**
+
 ```bash
 npm install
 npm run typecheck
@@ -133,15 +137,18 @@ npm test -- --passWithNoTests
    - `test_scripts/test-logger.ts` — `redactPhoneNumber` keeps last 3 digits; `createLogger` with redact paths produces `[REDACTED]` in the output stream (capture via a custom write stream).
 
 **Files touched.**
+
 - `src/errors/ConfigurationError.ts`, `src/config/requireEnv.ts`, `src/config/loadConfig.ts`, `src/config/session-store.ts`, `src/logger/logger.ts`.
 - `test_scripts/test-config.ts`, `test_scripts/test-session-store.ts`, `test_scripts/test-logger.ts`.
 
 **Acceptance criteria.**
+
 - All three test files pass under Vitest.
 - `npm run typecheck` is clean.
 - Manual spot-check: running `node -e "require('./dist/config/loadConfig').loadConfig()"` with no env set prints a clean `ConfigurationError: Required configuration variable not set: TELEGRAM_API_ID`.
 
 **Verification commands.**
+
 ```bash
 npm run typecheck
 npm test -- test_scripts/test-config.ts test_scripts/test-session-store.ts test_scripts/test-logger.ts
@@ -209,17 +216,20 @@ npm test -- test_scripts/test-config.ts test_scripts/test-session-store.ts test_
     - `test_scripts/test-client-api-shape.ts` — imports `TelegramUserClient` and asserts its prototype has the expected public methods (typecheck + `typeof` assertions). Does not instantiate.
 
 **Files touched.**
+
 - `src/errors/index.ts`
 - `src/client/types.ts`, `src/client/peer.ts`, `src/client/media.ts`, `src/client/flood.ts`, `src/client/shutdown.ts`, `src/client/PinoBridgeLogger.ts`, `src/client/buildClient.ts`, `src/client/TelegramUserClient.ts`
 - `src/index.ts`
 - `test_scripts/test-media-classify.ts`, `test_scripts/test-flood-retry.ts`, `test_scripts/test-peer-resolver.ts`, `test_scripts/test-client-api-shape.ts`
 
 **Acceptance criteria.**
+
 - `npm run typecheck` is clean.
 - All four new test files pass.
 - A sanity import from `src/index.ts` compiles and exposes every expected symbol listed in `IncomingEvent | SendResult | TelegramUserClient | <typed errors>`.
 
 **Verification commands.**
+
 ```bash
 npm run typecheck
 npm test -- test_scripts/test-media-classify.ts test_scripts/test-flood-retry.ts test_scripts/test-peer-resolver.ts test_scripts/test-client-api-shape.ts
@@ -266,15 +276,18 @@ npm test -- test_scripts/test-media-classify.ts test_scripts/test-flood-retry.ts
    - Spawns `node dist/cli/index.js send-text --to foo --text bar` with all env vars unset and asserts exit code is non-zero and stderr mentions `ConfigurationError` and at least one of the missing variable names.
 
 **Files touched.**
+
 - `src/cli/index.ts`, `src/cli/runLogin.ts`, `src/cli/runLogout.ts`, `src/cli/runSendText.ts`, `src/cli/runSendImage.ts`, `src/cli/runSendFile.ts`, `src/cli/runListen.ts`, `src/cli/withClient.ts`.
 - `test_scripts/test-cli-wiring.ts`.
 
 **Acceptance criteria.**
+
 - `npm run build && npm run cli -- --help` prints all six subcommands.
 - `npm run cli -- send-text --help` lists `--to` and `--text` as required.
 - `test_scripts/test-cli-wiring.ts` passes.
 
 **Verification commands.**
+
 ```bash
 npm run build
 npm run cli -- --help
@@ -370,6 +383,7 @@ npm test -- test_scripts/test-cli-wiring.ts
 5. **`Issues - Pending Items.md`** — move Phase-1-seeded pending items that are still open to the top; append any newly discovered items (e.g. known GramJS quirks, or any acceptance-criterion items that slipped).
 
 **Files touched.**
+
 - `README.md`
 - `CLAUDE.md` (tool registration)
 - `Issues - Pending Items.md`
@@ -378,6 +392,7 @@ npm test -- test_scripts/test-cli-wiring.ts
 - `docs/design/project-functions.md` (sync check only)
 
 **Acceptance criteria.**
+
 - `npm test` exits 0 across all non-integration tests.
 - `npm run typecheck` is clean.
 - `npm run build && npm run cli -- --help` lists all six subcommands.
@@ -385,6 +400,7 @@ npm test -- test_scripts/test-cli-wiring.ts
 - `README.md` quickstart is complete.
 
 **Verification commands.**
+
 ```bash
 npm run typecheck
 npm run build
@@ -396,14 +412,14 @@ npm run cli -- --help
 
 ## D. Parallelisation Notes
 
-| Phase | Parallelisable? | How to split |
-|---|---|---|
-| 1 | No | Small; single coder owns scaffolding end-to-end. |
-| 2 | No | Config + logger + session-store are tightly coupled and small; one coder in one sitting. |
-| 3 | **Yes — 2 coders** | **Coder A**: `errors/`, `client/types.ts`, `client/peer.ts`, `client/buildClient.ts`, `client/TelegramUserClient.ts` (facade that depends on B's exports). **Coder B**: `client/media.ts`, `client/flood.ts`, `client/shutdown.ts`, `client/PinoBridgeLogger.ts`. Contract between A and B = the exported function signatures listed in Phase 3 tasks 4–7. Designer must lock those signatures before the split starts. A waits for B only when wiring the facade in `TelegramUserClient.ts`; if the import surface is fixed, A can stub B's modules and the final integration is a trivial replacement. |
-| 3 tests | **Yes — up to 4 coders** | One test file per agent: `test-media-classify.ts` (B's territory), `test-flood-retry.ts` (B), `test-peer-resolver.ts` (A), `test-client-api-shape.ts` (A). |
-| 4 | No | CLI subcommands share `withClient.ts` and the same commander tree; serial is simpler than coordinating six small files. |
-| 5 tests + docs | **Yes — 2 coders** | Coder C: docs (README, CLAUDE.md, `Issues - Pending Items.md`). Coder D: `test-filename-convention.ts`, `test-integration-skeleton.ts`. |
+| Phase          | Parallelisable?          | How to split                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| -------------- | ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1              | No                       | Small; single coder owns scaffolding end-to-end.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| 2              | No                       | Config + logger + session-store are tightly coupled and small; one coder in one sitting.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| 3              | **Yes — 2 coders**       | **Coder A**: `errors/`, `client/types.ts`, `client/peer.ts`, `client/buildClient.ts`, `client/TelegramUserClient.ts` (facade that depends on B's exports). **Coder B**: `client/media.ts`, `client/flood.ts`, `client/shutdown.ts`, `client/PinoBridgeLogger.ts`. Contract between A and B = the exported function signatures listed in Phase 3 tasks 4–7. Designer must lock those signatures before the split starts. A waits for B only when wiring the facade in `TelegramUserClient.ts`; if the import surface is fixed, A can stub B's modules and the final integration is a trivial replacement. |
+| 3 tests        | **Yes — up to 4 coders** | One test file per agent: `test-media-classify.ts` (B's territory), `test-flood-retry.ts` (B), `test-peer-resolver.ts` (A), `test-client-api-shape.ts` (A).                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| 4              | No                       | CLI subcommands share `withClient.ts` and the same commander tree; serial is simpler than coordinating six small files.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| 5 tests + docs | **Yes — 2 coders**       | Coder C: docs (README, CLAUDE.md, `Issues - Pending Items.md`). Coder D: `test-filename-convention.ts`, `test-integration-skeleton.ts`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 
 **Hand-off contracts between Coder A and Coder B in Phase 3:**
 
@@ -450,26 +466,26 @@ Phase 4 (CLI) — depends on Phase 3's TelegramUserClient
 Phase 5 (tests, docs, CLAUDE.md)
 ```
 
-- Phase 5 documentation work (README sections that do not depend on code) *can* be started in parallel with Phase 4, but CLAUDE.md tool blocks and the README CLI reference require Phase 4's subcommand names to be final. Safer to keep 5 after 4.
+- Phase 5 documentation work (README sections that do not depend on code) _can_ be started in parallel with Phase 4, but CLAUDE.md tool blocks and the README CLI reference require Phase 4's subcommand names to be final. Safer to keep 5 after 4.
 - `docs/design/project-functions.md` (this plan's File 2) is authored NOW and frozen as the contract for acceptance criteria. Phase 5 only syncs it.
 
 ---
 
 ## F. Risks & Mitigations
 
-| # | Risk | Likelihood | Impact | Mitigation |
-|---|---|---|---|---|
-| R-1 | Telegram blocks logins from a new IP or device and the first `login` run requires a fallback to an existing session on another device to approve. | Medium | Login fails with an unclear error. | README clearly states: the first `login` must be run interactively, on a machine where the user can read the incoming code on another Telegram client, and may be prompted to confirm on another device. Our `login` CLI surfaces Telegram's error message verbatim. |
-| R-2 | `StringSession` file leaked from disk ⇒ full account compromise. | Low (local-only v1) | High (account takeover). | (a) `chmod 0600` enforced by `writeSession`. (b) Logged in `Issues - Pending Items.md` as a future hardening task (encrypt at rest). (c) README has a Security Notes section flagging the risk. |
-| R-3 | GramJS `_updateLoop` race on shutdown produces stray error logs. | High (known issue) | Low (cosmetic). | `installGracefulShutdown` uses `client.destroy()` + 500 ms settle + catches the two known error message substrings. See research §5. |
-| R-4 | Repeated `contacts.ResolveUsername` calls trigger multi-hour FLOOD_WAIT. | Medium | Medium (command stalls). | Peer resolver caches resolved `InputPeer`s for the process lifetime (research §1). The cache is in-memory; multi-hour-lived processes (i.e. `listen`) benefit naturally. |
-| R-5 | `input` package prompts are not type-safe. | Certain | Very low. | Acceptable for a tiny CLI; callers of the library do not touch `input`. |
-| R-6 | GramJS bundles `@cryptography/aes` JS; any future switch to a native crypto dep could add a `node-gyp` build step on some platforms. | Low (current release does not use native) | Medium if it happens. | Pin `telegram` to `^2.26.22`. Integration test covers install on macOS and (optionally) Linux. |
-| R-7 | mtcute or TDLib might be a better choice in 6 months if GramJS's release cadence stalls. | Medium | Medium (swap cost). | The facade `TelegramUserClient` is the only file that imports from `telegram`. Everything else depends on the facade's types. Swap is local to `src/client/`. |
-| R-8 | The refined spec says filenames use `senderId`, not `chatId`. Plan assumption B-12 keeps `chatId` for stability. | Low | Cosmetic. | Flagged in B-12; user sign-off required. Code path keeps both IDs available on `IncomingEvent` regardless. |
-| R-9 | `TELEGRAM_LOG_LEVEL` being required (no default) may surprise users. | Medium | Low (clear error). | `.env.example` has a non-empty `TELEGRAM_LOG_LEVEL=info` line so a new clone's `.env` starts populated. The README Quickstart calls this out. |
-| R-10 | Voice notes sometimes arrive with no `DocumentAttributeFilename` and we fall back to mime-based extension; an unexpected mime type ⇒ `.bin`. | Low | Very low. | `MIME_TO_EXT` covers the common cases; `.bin` is an acceptable worst-case. File is still retrievable; just misnamed. |
-| R-11 | Coder A and Coder B in Phase 3 drift on the contract types. | Medium (human error) | Medium (merge conflict). | Designer freezes contracts in `docs/design/project-design.md` *before* Phase 3 split; both coders import from the same `src/client/types.ts`. |
+| #    | Risk                                                                                                                                              | Likelihood                                | Impact                             | Mitigation                                                                                                                                                                                                                                                           |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- | ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| R-1  | Telegram blocks logins from a new IP or device and the first `login` run requires a fallback to an existing session on another device to approve. | Medium                                    | Login fails with an unclear error. | README clearly states: the first `login` must be run interactively, on a machine where the user can read the incoming code on another Telegram client, and may be prompted to confirm on another device. Our `login` CLI surfaces Telegram's error message verbatim. |
+| R-2  | `StringSession` file leaked from disk ⇒ full account compromise.                                                                                  | Low (local-only v1)                       | High (account takeover).           | (a) `chmod 0600` enforced by `writeSession`. (b) Logged in `Issues - Pending Items.md` as a future hardening task (encrypt at rest). (c) README has a Security Notes section flagging the risk.                                                                      |
+| R-3  | GramJS `_updateLoop` race on shutdown produces stray error logs.                                                                                  | High (known issue)                        | Low (cosmetic).                    | `installGracefulShutdown` uses `client.destroy()` + 500 ms settle + catches the two known error message substrings. See research §5.                                                                                                                                 |
+| R-4  | Repeated `contacts.ResolveUsername` calls trigger multi-hour FLOOD_WAIT.                                                                          | Medium                                    | Medium (command stalls).           | Peer resolver caches resolved `InputPeer`s for the process lifetime (research §1). The cache is in-memory; multi-hour-lived processes (i.e. `listen`) benefit naturally.                                                                                             |
+| R-5  | `input` package prompts are not type-safe.                                                                                                        | Certain                                   | Very low.                          | Acceptable for a tiny CLI; callers of the library do not touch `input`.                                                                                                                                                                                              |
+| R-6  | GramJS bundles `@cryptography/aes` JS; any future switch to a native crypto dep could add a `node-gyp` build step on some platforms.              | Low (current release does not use native) | Medium if it happens.              | Pin `telegram` to `^2.26.22`. Integration test covers install on macOS and (optionally) Linux.                                                                                                                                                                       |
+| R-7  | mtcute or TDLib might be a better choice in 6 months if GramJS's release cadence stalls.                                                          | Medium                                    | Medium (swap cost).                | The facade `TelegramUserClient` is the only file that imports from `telegram`. Everything else depends on the facade's types. Swap is local to `src/client/`.                                                                                                        |
+| R-8  | The refined spec says filenames use `senderId`, not `chatId`. Plan assumption B-12 keeps `chatId` for stability.                                  | Low                                       | Cosmetic.                          | Flagged in B-12; user sign-off required. Code path keeps both IDs available on `IncomingEvent` regardless.                                                                                                                                                           |
+| R-9  | `TELEGRAM_LOG_LEVEL` being required (no default) may surprise users.                                                                              | Medium                                    | Low (clear error).                 | `.env.example` has a non-empty `TELEGRAM_LOG_LEVEL=info` line so a new clone's `.env` starts populated. The README Quickstart calls this out.                                                                                                                        |
+| R-10 | Voice notes sometimes arrive with no `DocumentAttributeFilename` and we fall back to mime-based extension; an unexpected mime type ⇒ `.bin`.      | Low                                       | Very low.                          | `MIME_TO_EXT` covers the common cases; `.bin` is an acceptable worst-case. File is still retrievable; just misnamed.                                                                                                                                                 |
+| R-11 | Coder A and Coder B in Phase 3 drift on the contract types.                                                                                       | Medium (human error)                      | Medium (merge conflict).           | Designer freezes contracts in `docs/design/project-design.md` _before_ Phase 3 split; both coders import from the same `src/client/types.ts`.                                                                                                                        |
 
 ---
 
@@ -477,33 +493,33 @@ Phase 5 (tests, docs, CLAUDE.md)
 
 Mapped to the refined spec §7 (the numbers below match the spec's numbering). **All must pass for the Integration Verifier to declare v1 done.**
 
-| Spec # | Criterion | How verified |
-|---|---|---|
-| 1 | Interactive login + session persistence | Manual: run `npm run cli -- login` on a clean `.session` file, then `npm run cli -- send-text --to <self> --text ok` — second call must not prompt. |
-| 2 | Send text | Manual with a test recipient. |
-| 3 | Send image | Manual. |
-| 4 | Send document | Manual; recipient sees original filename. |
-| 5 | Recipient resolution for username / phone / numeric ID | Manual: three `send-text` calls with each identifier form. |
-| 6 | `listen` — incoming text | Manual: send a text from another account; JSON line appears on stdout. |
-| 7 | `listen` — incoming image → download | Manual + check filename matches `<utc>_<chatId>_<msgId>_photo.jpg`. |
-| 8 | `listen` — incoming voice | Manual; file has `.ogg` extension. |
-| 9 | `listen` — incoming audio | Manual; file has original extension from `DocumentAttributeFilename`. |
-| 10 | Clean shutdown | Manual: `listen` + Ctrl+C → exit code 0, no stack trace. |
-| 11 | Missing config fails loudly | Automated via `test_scripts/test-cli-wiring.ts` (unset vars ⇒ non-zero exit + `ConfigurationError`). |
-| 12 | Session invalidation handled | Manual: delete session file, run any command → clean `AuthRequiredError` message. |
-| 13 | Library-level usage | `test_scripts/test-integration-skeleton.ts` under `TELEGRAM_INTEGRATION=1`. |
-| 14 | FLOOD_WAIT typed error + retry | Automated via `test_scripts/test-flood-retry.ts` (mocked). |
-| 15 | No secrets in logs | Manual log inspection during login/send/listen; pino redact paths cover the known fields. |
+| Spec # | Criterion                                              | How verified                                                                                                                                        |
+| ------ | ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1      | Interactive login + session persistence                | Manual: run `npm run cli -- login` on a clean `.session` file, then `npm run cli -- send-text --to <self> --text ok` — second call must not prompt. |
+| 2      | Send text                                              | Manual with a test recipient.                                                                                                                       |
+| 3      | Send image                                             | Manual.                                                                                                                                             |
+| 4      | Send document                                          | Manual; recipient sees original filename.                                                                                                           |
+| 5      | Recipient resolution for username / phone / numeric ID | Manual: three `send-text` calls with each identifier form.                                                                                          |
+| 6      | `listen` — incoming text                               | Manual: send a text from another account; JSON line appears on stdout.                                                                              |
+| 7      | `listen` — incoming image → download                   | Manual + check filename matches `<utc>_<chatId>_<msgId>_photo.jpg`.                                                                                 |
+| 8      | `listen` — incoming voice                              | Manual; file has `.ogg` extension.                                                                                                                  |
+| 9      | `listen` — incoming audio                              | Manual; file has original extension from `DocumentAttributeFilename`.                                                                               |
+| 10     | Clean shutdown                                         | Manual: `listen` + Ctrl+C → exit code 0, no stack trace.                                                                                            |
+| 11     | Missing config fails loudly                            | Automated via `test_scripts/test-cli-wiring.ts` (unset vars ⇒ non-zero exit + `ConfigurationError`).                                                |
+| 12     | Session invalidation handled                           | Manual: delete session file, run any command → clean `AuthRequiredError` message.                                                                   |
+| 13     | Library-level usage                                    | `test_scripts/test-integration-skeleton.ts` under `TELEGRAM_INTEGRATION=1`.                                                                         |
+| 14     | FLOOD_WAIT typed error + retry                         | Automated via `test_scripts/test-flood-retry.ts` (mocked).                                                                                          |
+| 15     | No secrets in logs                                     | Manual log inspection during login/send/listen; pino redact paths cover the known fields.                                                           |
 
 **Additional acceptance criteria added by this plan:**
 
-| Plan-# | Criterion | Verification |
-|---|---|---|
-| P-1 | All `CLAUDE.md`-mandated structural files exist: `docs/design/plan-001-*.md`, `docs/design/project-functions.md`, `Issues - Pending Items.md`, `test_scripts/` folder, `prompts/` folder, `docs/reference/` folder. | Filesystem check. |
-| P-2 | `CLAUDE.md` contains `<telegram-cli>` and `<telegram-user-client>` tool-documentation blocks. | Grep for block markers. |
-| P-3 | `package.json` declares `"engines": { "node": ">=20" }`. | `jq .engines.node < package.json`. |
-| P-4 | `npm run typecheck` is clean on the final tree. | CI / manual. |
-| P-5 | Unit-test coverage ≥ 70 % on `src/config/`, `src/client/media.ts`, `src/client/flood.ts` (the most pure-function-heavy modules). | `npm run coverage`. |
+| Plan-# | Criterion                                                                                                                                                                                                           | Verification                       |
+| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
+| P-1    | All `CLAUDE.md`-mandated structural files exist: `docs/design/plan-001-*.md`, `docs/design/project-functions.md`, `Issues - Pending Items.md`, `test_scripts/` folder, `prompts/` folder, `docs/reference/` folder. | Filesystem check.                  |
+| P-2    | `CLAUDE.md` contains `<telegram-cli>` and `<telegram-user-client>` tool-documentation blocks.                                                                                                                       | Grep for block markers.            |
+| P-3    | `package.json` declares `"engines": { "node": ">=20" }`.                                                                                                                                                            | `jq .engines.node < package.json`. |
+| P-4    | `npm run typecheck` is clean on the final tree.                                                                                                                                                                     | CI / manual.                       |
+| P-5    | Unit-test coverage ≥ 70 % on `src/config/`, `src/client/media.ts`, `src/client/flood.ts` (the most pure-function-heavy modules).                                                                                    | `npm run coverage`.                |
 
 ---
 

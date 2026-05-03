@@ -8,14 +8,8 @@ export type { TelegramUserClientOptions } from './client/TelegramUserClient.js';
 export { resolvePeer } from './client/peer.js';
 export type { PeerInput } from './client/peer.js';
 
-export {
-  classifyIncoming,
-  downloadIncomingMedia,
-} from './client/media.js';
-export type {
-  IncomingKind,
-  IncomingMedia,
-} from './client/media.js';
+export { classifyIncoming, downloadIncomingMedia } from './client/media.js';
+export type { IncomingKind, IncomingMedia } from './client/media.js';
 
 export { withFloodRetry } from './client/flood.js';
 export type { WithFloodRetryOptions } from './client/flood.js';

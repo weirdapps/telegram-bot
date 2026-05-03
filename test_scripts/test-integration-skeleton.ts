@@ -10,11 +10,7 @@
 
 import { describe, test, expect } from 'vitest';
 
-import {
-  TelegramUserClient,
-  loadConfig,
-  createLogger,
-} from '../src/index.js';
+import { TelegramUserClient, loadConfig, createLogger } from '../src/index.js';
 import { existsSync, readFileSync } from 'node:fs';
 
 const live = process.env.TELEGRAM_TEST_LIVE === '1';

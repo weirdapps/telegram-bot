@@ -81,6 +81,7 @@ chmod 600 /Users/plessas/.config/gcloud/voice-bridge-sa.json
 ```
 
 **WARNING — both roles are required**:
+
 - `roles/serviceusage.serviceUsageConsumer` lets the SA bill the project for API usage.
 - `roles/speech.client` grants `speech.recognizers.recognize`, which Speech v2's recognizer-based API requires. The first role alone is sufficient for TTS but Speech v2 will reject every recognize() with `IAM_PERMISSION_DENIED` until the second is granted.
 
@@ -192,13 +193,13 @@ gcloud --account=plessasdimitrios@gmail.com \
 
 ## Troubleshooting
 
-| Symptom | Likely cause | Fix |
-|---|---|---|
-| Bridge crashes on startup with `VoiceBridgeConfigError: VAR_NAME is not set` | Missing env var | Add to `.env`, restart bridge |
-| Voice note replied with `voice transcription failed: ... PERMISSION_DENIED ... speech.recognizers.recognize` | SA missing `roles/speech.client` | Re-run Step 3 grants, wait 60 s for IAM propagation |
-| Voice note replied with `voice transcription failed: ... model "chirp_2" does not exist in the location ...` | Code drift back to chirp_2 | Confirm `bridge/src/stt/google.ts` uses `STT_LOCATION='eu'` and `STT_MODEL='long'` |
-| Voice note replied with `couldn't make out the voice note` despite clear speech | Confidence-zero transcripts being rejected | Confirm `bridge/src/stt/google.ts` skips zero-confidence in aggregation (the `top.confidence > 0` guard) |
-| Claude responses fail with `aiplatform.endpoints.predict denied on resource '//.../projects/nbg-...'` | `GOOGLE_APPLICATION_CREDENTIALS` is set in process env, hijacking Anthropic SDK auth | Confirm `.env` uses `VOICE_BRIDGE_GCP_KEY_PATH` (not `GOOGLE_APPLICATION_CREDENTIALS`); restart bridge |
-| Reply arrives as a generic file attachment, not a playable waveform | `voice: true` flag missing — check `sendVoice` in TelegramUserClient.ts | Should not happen with current code; file an issue |
-| Voice replies in robotic Greek, not Chirp3-HD | Voice name typo in `VOICE_BRIDGE_TTS_VOICE_EL` | Verify with `gcloud ml language list-voices` |
-| Long Greek replies cut off mid-sentence with no tail message | Truncation worked but the tail phrase is missing — check `truncateForSpeech` in replyRouter.ts | Should not happen; tail is always appended |
+| Symptom                                                                                                      | Likely cause                                                                                   | Fix                                                                                                      |
+| ------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| Bridge crashes on startup with `VoiceBridgeConfigError: VAR_NAME is not set`                                 | Missing env var                                                                                | Add to `.env`, restart bridge                                                                            |
+| Voice note replied with `voice transcription failed: ... PERMISSION_DENIED ... speech.recognizers.recognize` | SA missing `roles/speech.client`                                                               | Re-run Step 3 grants, wait 60 s for IAM propagation                                                      |
+| Voice note replied with `voice transcription failed: ... model "chirp_2" does not exist in the location ...` | Code drift back to chirp_2                                                                     | Confirm `bridge/src/stt/google.ts` uses `STT_LOCATION='eu'` and `STT_MODEL='long'`                       |
+| Voice note replied with `couldn't make out the voice note` despite clear speech                              | Confidence-zero transcripts being rejected                                                     | Confirm `bridge/src/stt/google.ts` skips zero-confidence in aggregation (the `top.confidence > 0` guard) |
+| Claude responses fail with `aiplatform.endpoints.predict denied on resource '//.../projects/nbg-...'`        | `GOOGLE_APPLICATION_CREDENTIALS` is set in process env, hijacking Anthropic SDK auth           | Confirm `.env` uses `VOICE_BRIDGE_GCP_KEY_PATH` (not `GOOGLE_APPLICATION_CREDENTIALS`); restart bridge   |
+| Reply arrives as a generic file attachment, not a playable waveform                                          | `voice: true` flag missing — check `sendVoice` in TelegramUserClient.ts                        | Should not happen with current code; file an issue                                                       |
+| Voice replies in robotic Greek, not Chirp3-HD                                                                | Voice name typo in `VOICE_BRIDGE_TTS_VOICE_EL`                                                 | Verify with `gcloud ml language list-voices`                                                             |
+| Long Greek replies cut off mid-sentence with no tail message                                                 | Truncation worked but the tail phrase is missing — check `truncateForSpeech` in replyRouter.ts | Should not happen; tail is always appended                                                               |

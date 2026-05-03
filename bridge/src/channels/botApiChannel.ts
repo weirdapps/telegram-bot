@@ -13,7 +13,12 @@ import type {
 export interface BotLike {
   api: {
     sendMessage: (chatId: string | number, text: string, ...args: unknown[]) => Promise<unknown>;
-    sendVoice: (chatId: string | number, voice: string | InputFile, opts?: { duration?: number }, ...args: unknown[]) => Promise<unknown>;
+    sendVoice: (
+      chatId: string | number,
+      voice: string | InputFile,
+      opts?: { duration?: number },
+      ...args: unknown[]
+    ) => Promise<unknown>;
     getFile: (fileId: string) => Promise<{ file_path?: string }>;
   };
   on: (event: string, handler: (ctx: Context) => void | Promise<void>) => unknown;
@@ -71,7 +76,8 @@ export class BotApiChannel implements Channel {
       const text = ctx.message?.text ?? '';
       const chatId = String(ctx.chat?.id ?? '');
       const senderId = String(ctx.from?.id ?? '');
-      const messageId = ctx.message?.message_id !== undefined ? String(ctx.message.message_id) : undefined;
+      const messageId =
+        ctx.message?.message_id !== undefined ? String(ctx.message.message_id) : undefined;
       const msg: ChannelMessage = { channel: this.name, chatId, senderId, text };
       if (messageId !== undefined) msg.messageId = messageId;
       this.textHandler(msg);
@@ -83,7 +89,8 @@ export class BotApiChannel implements Channel {
       if (!voice) return;
       const chatId = String(ctx.chat?.id ?? '');
       const senderId = String(ctx.from?.id ?? '');
-      const messageId = ctx.message?.message_id !== undefined ? String(ctx.message.message_id) : undefined;
+      const messageId =
+        ctx.message?.message_id !== undefined ? String(ctx.message.message_id) : undefined;
       let mediaPath: string | undefined;
       try {
         const file = await ctx.api.getFile(voice.file_id);
@@ -95,7 +102,10 @@ export class BotApiChannel implements Channel {
           writeFileSync(mediaPath, buf, { mode: 0o600 });
         }
       } catch (err) {
-        this.logger?.warn({ component: 'botApiChannel', err: err instanceof Error ? err.message : String(err) }, 'voice download failed');
+        this.logger?.warn(
+          { component: 'botApiChannel', err: err instanceof Error ? err.message : String(err) },
+          'voice download failed',
+        );
       }
       const msg: ChannelMessage = { channel: this.name, chatId, senderId };
       if (messageId !== undefined) msg.messageId = messageId;
@@ -111,17 +121,22 @@ export class BotApiChannel implements Channel {
     // If grammy throws (e.g. 409 Conflict when another poller holds the token),
     // revert the started flag and surface the error so the caller (or operator
     // tailing logs) can react. Without this catch, errors are silently swallowed.
-    void this.bot.start({
-      onStart: (info) => {
-        this.logger?.info({ component: 'botApiChannel', username: info.username }, `polling as @${info.username}`);
-      },
-    }).catch((err) => {
-      this.started = false;
-      this.logger?.error(
-        { component: 'botApiChannel', err: err instanceof Error ? err.message : String(err) },
-        'bot.start() failed — polling not active',
-      );
-    });
+    void this.bot
+      .start({
+        onStart: (info) => {
+          this.logger?.info(
+            { component: 'botApiChannel', username: info.username },
+            `polling as @${info.username}`,
+          );
+        },
+      })
+      .catch((err) => {
+        this.started = false;
+        this.logger?.error(
+          { component: 'botApiChannel', err: err instanceof Error ? err.message : String(err) },
+          'bot.start() failed — polling not active',
+        );
+      });
   }
 
   async stop(): Promise<void> {

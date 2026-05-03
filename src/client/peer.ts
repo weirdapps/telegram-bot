@@ -155,14 +155,10 @@ function makePhoneStrategy(phoneWithPlus: string): Strategy {
   return {
     kind: 'phone',
     async run(client) {
-      const phone = phoneWithPlus.startsWith('+')
-        ? phoneWithPlus.slice(1)
-        : phoneWithPlus;
+      const phone = phoneWithPlus.startsWith('+') ? phoneWithPlus.slice(1) : phoneWithPlus;
       // Try the direct contacts.ResolvePhone RPC first.
       try {
-        const resolved = await client.invoke(
-          new Api.contacts.ResolvePhone({ phone }),
-        );
+        const resolved = await client.invoke(new Api.contacts.ResolvePhone({ phone }));
         // ResolvePhone returns a contacts.ResolvedPeer with .peer (Api.Peer) + .users/.chats.
         // Building an InputPeer from that requires looking up the matching user.
         const users = resolved.users ?? [];
@@ -186,8 +182,7 @@ function makeIdStrategy(input: string | number | bigint): Strategy {
     async run(client) {
       // GramJS's EntityLike accepts `bigInt.BigInteger` (big-integer library
       // values), NOT native bigints. Convert via the library's constructor.
-      const asStr =
-        typeof input === 'bigint' ? input.toString() : String(input);
+      const asStr = typeof input === 'bigint' ? input.toString() : String(input);
       const id = bigInt(asStr);
       const entity = await client.getEntity(id);
       return toInputPeer(client, entity);
@@ -209,12 +204,11 @@ function makeRawStrategy(input: string): Strategy {
  * Coerces a GramJS-returned entity into an Api.TypeInputPeer.
  * GramJS's `client.getInputEntity` does the right thing for any shape.
  */
-async function toInputPeer(
-  client: TelegramClient,
-  entity: unknown,
-): Promise<Api.TypeInputPeer> {
+async function toInputPeer(client: TelegramClient, entity: unknown): Promise<Api.TypeInputPeer> {
   // `client.getInputEntity` accepts entities and id-like inputs alike.
-  const peer = await client.getInputEntity(entity as Parameters<TelegramClient['getInputEntity']>[0]);
+  const peer = await client.getInputEntity(
+    entity as Parameters<TelegramClient['getInputEntity']>[0],
+  );
   return peer;
 }
 

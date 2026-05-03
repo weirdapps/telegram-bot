@@ -6,12 +6,7 @@
 
 import { existsSync, readFileSync } from 'node:fs';
 
-import {
-  TelegramUserClient,
-  loadConfig,
-  createLogger,
-  LoginRequiredError,
-} from '../index.js';
+import { TelegramUserClient, loadConfig, createLogger, LoginRequiredError } from '../index.js';
 import type { AppConfig } from '../index.js';
 import type { Logger } from '../index.js';
 
@@ -21,9 +16,7 @@ export interface WithClientContext {
   readonly logger: Logger;
 }
 
-export async function withClient<T>(
-  fn: (ctx: WithClientContext) => Promise<T>,
-): Promise<T> {
+export async function withClient<T>(fn: (ctx: WithClientContext) => Promise<T>): Promise<T> {
   const config = loadConfig();
   const logger = createLogger(config.logLevel);
 
@@ -32,9 +25,7 @@ export async function withClient<T>(
     : '';
 
   if (!sessionString) {
-    throw new LoginRequiredError(
-      'No session found. Run `telegram-tool login` first.',
-    );
+    throw new LoginRequiredError('No session found. Run `telegram-tool login` first.');
   }
 
   const client = new TelegramUserClient({

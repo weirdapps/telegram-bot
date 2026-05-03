@@ -1,8 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import {
-  withRetryOnTimeout,
-  isSdkSilenceError,
-} from '../bridge/src/claudeRetry.js';
+import { withRetryOnTimeout, isSdkSilenceError } from '../bridge/src/claudeRetry.js';
 
 // withRetryOnTimeout(attempt, resume, opts) is a pure-ish wrapper that retries
 // exactly once when `attempt` rejects with a "silence watchdog" error. On
@@ -49,9 +46,9 @@ describe('withRetryOnTimeout', () => {
     });
     const onRetry = vi.fn();
 
-    await expect(
-      withRetryOnTimeout(attempt, 'session-123', { onRetry }),
-    ).rejects.toThrow('Vertex 403 PERMISSION_DENIED');
+    await expect(withRetryOnTimeout(attempt, 'session-123', { onRetry })).rejects.toThrow(
+      'Vertex 403 PERMISSION_DENIED',
+    );
 
     expect(attempt).toHaveBeenCalledTimes(1);
     expect(onRetry).not.toHaveBeenCalled();
@@ -65,9 +62,9 @@ describe('withRetryOnTimeout', () => {
     });
     const onRetry = vi.fn();
 
-    await expect(
-      withRetryOnTimeout(attempt, 'session-123', { onRetry }),
-    ).rejects.toThrow('SDK silent for 300s (attempt 2)');
+    await expect(withRetryOnTimeout(attempt, 'session-123', { onRetry })).rejects.toThrow(
+      'SDK silent for 300s (attempt 2)',
+    );
 
     expect(attempt).toHaveBeenCalledTimes(2);
     expect(onRetry).toHaveBeenCalledTimes(1);

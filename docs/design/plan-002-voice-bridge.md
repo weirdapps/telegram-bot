@@ -128,6 +128,7 @@ This plan executes the voice bridge spec in dependency order. Each step is indep
 ## Rollback strategy
 
 If any step fails verification:
+
 - Steps 1–9 are additive; revert by `git checkout` of changed files.
 - The bridge's existing text-only path is untouched until step 7. A failed step 7 means the voice path is broken but text still works.
 - `voiceMode` defaults to `'mirror'`; if the router has a bug, set `/voice off` to force text-only operation while debugging.

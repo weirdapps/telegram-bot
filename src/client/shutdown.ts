@@ -30,10 +30,7 @@ function isExpectedPostDisconnectError(err: unknown): boolean {
  *
  * Returns an uninstaller that removes the signal handlers (useful for tests).
  */
-export function installGracefulShutdown(
-  client: TelegramUserClient,
-  logger: Logger,
-): () => void {
+export function installGracefulShutdown(client: TelegramUserClient, logger: Logger): () => void {
   let shutdownInProgress = false;
 
   const shutdown = async (signal: NodeJS.Signals): Promise<void> => {

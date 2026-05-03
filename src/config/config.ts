@@ -80,10 +80,7 @@ export function loadConfig(): AppConfig {
   // Validate apiId — must be a positive integer.
   const apiId = Number(apiIdRaw);
   if (!Number.isInteger(apiId) || apiId <= 0) {
-    throw new ConfigError(
-      'TELEGRAM_API_ID must be a positive integer',
-      'TELEGRAM_API_ID',
-    );
+    throw new ConfigError('TELEGRAM_API_ID must be a positive integer', 'TELEGRAM_API_ID');
   }
 
   // Validate session path absolute.
@@ -113,28 +110,27 @@ export function loadConfig(): AppConfig {
   // Optional 2FA password.
   const twoFaRaw = process.env['TELEGRAM_2FA_PASSWORD'];
   const twoFaPassword =
-    twoFaRaw !== undefined && twoFaRaw !== null && twoFaRaw !== ''
-      ? twoFaRaw
-      : undefined;
+    twoFaRaw !== undefined && twoFaRaw !== null && twoFaRaw !== '' ? twoFaRaw : undefined;
 
-  const cfg: AppConfig = twoFaPassword !== undefined
-    ? {
-        apiId,
-        apiHash,
-        phoneNumber,
-        sessionPath,
-        downloadDir,
-        logLevel: logLevelRaw,
-        twoFaPassword,
-      }
-    : {
-        apiId,
-        apiHash,
-        phoneNumber,
-        sessionPath,
-        downloadDir,
-        logLevel: logLevelRaw,
-      };
+  const cfg: AppConfig =
+    twoFaPassword !== undefined
+      ? {
+          apiId,
+          apiHash,
+          phoneNumber,
+          sessionPath,
+          downloadDir,
+          logLevel: logLevelRaw,
+          twoFaPassword,
+        }
+      : {
+          apiId,
+          apiHash,
+          phoneNumber,
+          sessionPath,
+          downloadDir,
+          logLevel: logLevelRaw,
+        };
   return cfg;
 }
 

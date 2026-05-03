@@ -13,6 +13,7 @@
 ## File Structure
 
 **Created:**
+
 - `bridge/src/channels/channel.ts` — interface + types only
 - `bridge/src/channels/mtprotoChannel.ts` — wrapper around existing `TelegramUserClient`
 - `bridge/src/channels/botApiChannel.ts` — new grammy-based implementation
@@ -20,6 +21,7 @@
 - `test_scripts/test-botApiChannel.ts` — unit tests for the bot wrapper
 
 **Modified:**
+
 - `package.json` — add grammy
 - `bridge/src/index.ts` — instantiate both channels, attach shared handler
 - `.env.example` — document `TELEGRAM_BOT_TOKEN` + (optional) `TELEGRAM_BRIDGE_BOT_ALLOWED_USER_IDS`
@@ -33,30 +35,37 @@
 ### Task 1: Add `grammy` dependency
 
 **Files:**
+
 - Modify: `package.json` (dependencies block)
 
 - [ ] **Step 1: Install grammy**
 
 Run:
+
 ```bash
 cd ~/SourceCode/telegram-bot && npm install grammy@^1.21.0
 ```
+
 Expected: `package.json` shows `"grammy": "^1.21.0"` under dependencies; `package-lock.json` updated; `node_modules/grammy/` exists.
 
 - [ ] **Step 2: Verify the import resolves**
 
 Run:
+
 ```bash
 cd ~/SourceCode/telegram-bot && node --input-type=module -e "import('grammy').then(m => console.log('ok', typeof m.Bot))"
 ```
+
 Expected: `ok function`
 
 - [ ] **Step 3: Typecheck still passes**
 
 Run:
+
 ```bash
 cd ~/SourceCode/telegram-bot && npm run typecheck
 ```
+
 Expected: exit 0, no errors.
 
 - [ ] **Step 4: Commit**
@@ -70,15 +79,22 @@ cd ~/SourceCode/telegram-bot && git add package.json package-lock.json && git co
 ### Task 2: Define the `Channel` interface
 
 **Files:**
+
 - Create: `bridge/src/channels/channel.ts`
 - Create: `test_scripts/test-channel-types.ts`
 
 - [ ] **Step 1: Write the failing test**
 
 Create `test_scripts/test-channel-types.ts`:
+
 ```typescript
 import { describe, it, expectTypeOf } from 'vitest';
-import type { Channel, ChannelMessage, ChannelTextHandler, ChannelVoiceHandler } from '../bridge/src/channels/channel.js';
+import type {
+  Channel,
+  ChannelMessage,
+  ChannelTextHandler,
+  ChannelVoiceHandler,
+} from '../bridge/src/channels/channel.js';
 
 describe('Channel interface shape', () => {
   it('ChannelMessage has the documented fields', () => {
@@ -105,14 +121,17 @@ describe('Channel interface shape', () => {
 `expectTypeOf` is a vitest type-only API and `import type` erases at runtime, so vitest itself can't see the missing module. Use `tsc` for TDD red/green on type contracts.
 
 Run:
+
 ```bash
 cd ~/SourceCode/telegram-bot && npm run typecheck
 ```
+
 Expected: FAIL with `error TS2307: Cannot find module '../bridge/src/channels/channel.js'`.
 
 - [ ] **Step 3: Create the interface**
 
 Create `bridge/src/channels/channel.ts`:
+
 ```typescript
 /**
  * Channel — minimal abstraction over a Telegram input/output source.
@@ -164,17 +183,21 @@ export interface Channel {
 - [ ] **Step 4: Verify typecheck now passes (GREEN)**
 
 Run:
+
 ```bash
 cd ~/SourceCode/telegram-bot && npm run typecheck
 ```
+
 Expected: exit 0.
 
 - [ ] **Step 5: Runtime sanity check — vitest discovers and "runs" the test**
 
 Run:
+
 ```bash
 cd ~/SourceCode/telegram-bot && npx vitest run test_scripts/test-channel-types.ts
 ```
+
 Expected: 2/2 PASS. The assertions are type-only and run as no-ops at runtime; this only proves the file parses and vitest discovers it.
 
 - [ ] **Step 6: Commit**
@@ -188,6 +211,7 @@ cd ~/SourceCode/telegram-bot && git add bridge/src/channels/channel.ts test_scri
 ### Task 3: Wrap existing MTProto client as `MtProtoChannel`
 
 **Files:**
+
 - Create: `bridge/src/channels/mtprotoChannel.ts`
 
 This task is a behavior-preserving wrapper — no test needed beyond typecheck + later integration via Task 4.
@@ -195,6 +219,7 @@ This task is a behavior-preserving wrapper — no test needed beyond typecheck +
 - [ ] **Step 1: Create the wrapper**
 
 Create `bridge/src/channels/mtprotoChannel.ts`:
+
 ```typescript
 import type { TelegramUserClient } from '../../../src/index.js';
 import type { Channel, ChannelTextHandler, ChannelVoiceHandler } from './channel.js';
@@ -258,9 +283,11 @@ export class MtProtoChannel implements Channel {
 - [ ] **Step 2: Typecheck**
 
 Run:
+
 ```bash
 cd ~/SourceCode/telegram-bot && npm run typecheck
 ```
+
 Expected: exit 0.
 
 - [ ] **Step 3: Commit**
@@ -274,6 +301,7 @@ cd ~/SourceCode/telegram-bot && git add bridge/src/channels/mtprotoChannel.ts &&
 ### Task 4: Refactor `bridge/src/index.ts` to use `MtProtoChannel` (no behavior change)
 
 **Files:**
+
 - Modify: `bridge/src/index.ts:69-181` (client creation, event handlers, listener startup)
 
 This is a pure refactor. Existing test scripts (test-bridge-split-message, test-claudeRetry, test-replyRouter, etc.) MUST continue to pass.
@@ -283,6 +311,7 @@ This is a pure refactor. Existing test scripts (test-bridge-split-message, test-
 Replace the `handleTextMessage` and `handleVoiceMessage` signatures in `bridge/src/index.ts`. They currently take `(text, chatId, rt)` and `(filePath, chatId, rt)` — change to `(msg, rt)`.
 
 In `bridge/src/index.ts`, find:
+
 ```typescript
 async function handleTextMessage(
   text: string,
@@ -290,7 +319,9 @@ async function handleTextMessage(
   rt: BridgeRuntime,
 ): Promise<void> {
 ```
+
 Replace with:
+
 ```typescript
 async function handleTextMessage(
   msg: ChannelMessage,
@@ -301,6 +332,7 @@ async function handleTextMessage(
 ```
 
 Find:
+
 ```typescript
 async function handleVoiceMessage(
   filePath: string,
@@ -308,7 +340,9 @@ async function handleVoiceMessage(
   rt: BridgeRuntime,
 ): Promise<void> {
 ```
+
 Replace with:
+
 ```typescript
 async function handleVoiceMessage(
   msg: ChannelMessage,
@@ -327,10 +361,13 @@ Inside both functions, `rt.client.sendText(chatId, ...)` calls now need `chatId:
 - [ ] **Step 2: Replace `rt.client` with `rt.channel`**
 
 In `BridgeRuntime` interface (currently lines ~38-47), replace:
+
 ```typescript
-  client: TelegramUserClient;
+client: TelegramUserClient;
 ```
+
 with:
+
 ```typescript
   channels: Channel[];
   /** First channel is the "primary" used for replies — replaced in Task 6 with per-message routing. */
@@ -344,71 +381,95 @@ Then in `runClaudeTurn`, `await rt.client.sendText(chatId, chunk)` becomes `awai
 - [ ] **Step 3: Wire MtProtoChannel in `main()`**
 
 Replace lines 69-77 (the `new TelegramUserClient(...)` and `await client.connect()`) with:
+
 ```typescript
-  const userClient = new TelegramUserClient({
-    apiId: cfg.apiId,
-    apiHash: cfg.apiHash,
-    sessionString,
-    logger,
-    downloadDir: cfg.downloadDir,
-    sessionPath: cfg.sessionPath,
-  });
-  await userClient.connect();
-  const savedMessages = new MtProtoChannel(userClient);
+const userClient = new TelegramUserClient({
+  apiId: cfg.apiId,
+  apiHash: cfg.apiHash,
+  sessionString,
+  logger,
+  downloadDir: cfg.downloadDir,
+  sessionPath: cfg.sessionPath,
+});
+await userClient.connect();
+const savedMessages = new MtProtoChannel(userClient);
 ```
 
 Then replace lines ~113-167 (the `client.on('text', ...)` and `client.on('voice', ...)` blocks plus `client.startListening()`) with:
-```typescript
-  // Single shared handler per channel — same FIFO queue serialises across all channels
-  const attachHandlers = (ch: Channel): void => {
-    ch.onText((m) => {
-      if (!isAllowed(m.senderId, allowed)) {
-        logger.warn({ component: 'bridge', channel: m.channel, senderId: m.senderId, chatId: m.chatId }, 'rejected: sender not allowlisted');
-        return;
-      }
-      const text = (m.text ?? '').trim();
-      if (text === '') return;
-      queue = queue.then(() =>
-        handleTextMessage({ ...m, text }, rt).catch((err) => {
-          logger.error({ component: 'bridge', channel: m.channel, err: err instanceof Error ? err.message : String(err) }, 'unhandled error in text handler');
-        }),
-      );
-    });
-    ch.onVoice((m) => {
-      if (!isAllowed(m.senderId, allowed)) {
-        logger.warn({ component: 'bridge', channel: m.channel, senderId: m.senderId, chatId: m.chatId }, 'rejected: voice sender not allowlisted');
-        return;
-      }
-      queue = queue.then(() =>
-        handleVoiceMessage(m, rt).catch((err) => {
-          logger.error({ component: 'bridge', channel: m.channel, err: err instanceof Error ? err.message : String(err) }, 'unhandled error in voice handler');
-        }),
-      );
-    });
-  };
 
-  const channels: Channel[] = [savedMessages];
-  for (const ch of channels) attachHandlers(ch);
-  for (const ch of channels) await ch.start();
+```typescript
+// Single shared handler per channel — same FIFO queue serialises across all channels
+const attachHandlers = (ch: Channel): void => {
+  ch.onText((m) => {
+    if (!isAllowed(m.senderId, allowed)) {
+      logger.warn(
+        { component: 'bridge', channel: m.channel, senderId: m.senderId, chatId: m.chatId },
+        'rejected: sender not allowlisted',
+      );
+      return;
+    }
+    const text = (m.text ?? '').trim();
+    if (text === '') return;
+    queue = queue.then(() =>
+      handleTextMessage({ ...m, text }, rt).catch((err) => {
+        logger.error(
+          {
+            component: 'bridge',
+            channel: m.channel,
+            err: err instanceof Error ? err.message : String(err),
+          },
+          'unhandled error in text handler',
+        );
+      }),
+    );
+  });
+  ch.onVoice((m) => {
+    if (!isAllowed(m.senderId, allowed)) {
+      logger.warn(
+        { component: 'bridge', channel: m.channel, senderId: m.senderId, chatId: m.chatId },
+        'rejected: voice sender not allowlisted',
+      );
+      return;
+    }
+    queue = queue.then(() =>
+      handleVoiceMessage(m, rt).catch((err) => {
+        logger.error(
+          {
+            component: 'bridge',
+            channel: m.channel,
+            err: err instanceof Error ? err.message : String(err),
+          },
+          'unhandled error in voice handler',
+        );
+      }),
+    );
+  });
+};
+
+const channels: Channel[] = [savedMessages];
+for (const ch of channels) attachHandlers(ch);
+for (const ch of channels) await ch.start();
 ```
 
 Update `BridgeRuntime` literal initialization (~line 99-108) to set `channels` and `channel: savedMessages`.
 
 Update shutdown block (~line 183-192):
+
 ```typescript
-  const shutdown = async (): Promise<void> => {
-    logger.info({ component: 'bridge' }, 'shutdown signal received');
-    await queue.catch(() => undefined);
-    stt.close();
-    tts.close();
-    for (const ch of channels) await ch.stop();
-    process.exit(0);
-  };
+const shutdown = async (): Promise<void> => {
+  logger.info({ component: 'bridge' }, 'shutdown signal received');
+  await queue.catch(() => undefined);
+  stt.close();
+  tts.close();
+  for (const ch of channels) await ch.stop();
+  process.exit(0);
+};
 ```
 
 - [ ] **Step 4: Add the new imports at the top of `bridge/src/index.ts`**
 
 Insert near the existing imports:
+
 ```typescript
 import type { Channel, ChannelMessage } from './channels/channel.js';
 import { MtProtoChannel } from './channels/mtprotoChannel.js';
@@ -419,17 +480,21 @@ Remove the now-unused `client` field from BridgeRuntime if any references remain
 - [ ] **Step 5: Typecheck**
 
 Run:
+
 ```bash
 cd ~/SourceCode/telegram-bot && npm run typecheck
 ```
+
 Expected: exit 0. Fix any leftover `rt.client` references or type mismatches.
 
 - [ ] **Step 6: Run all existing tests**
 
 Run:
+
 ```bash
 cd ~/SourceCode/telegram-bot && npx vitest run
 ```
+
 Expected: PASS. No regressions in test-bridge-split-message, test-replyRouter, test-claudeRetry, test-pluginLoader, test-session-store, test-voiceMode, test-markdownStrip, test-channel-types.
 
 - [ ] **Step 7: Commit**
@@ -443,12 +508,14 @@ cd ~/SourceCode/telegram-bot && git add bridge/src/index.ts && git commit -m "re
 ### Task 5: Implement `BotApiChannel`
 
 **Files:**
+
 - Create: `bridge/src/channels/botApiChannel.ts`
 - Create: `test_scripts/test-botApiChannel.ts`
 
 - [ ] **Step 1: Write the failing test**
 
 Create `test_scripts/test-botApiChannel.ts`:
+
 ```typescript
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { BotApiChannel } from '../bridge/src/channels/botApiChannel.js';
@@ -466,7 +533,14 @@ describe('BotApiChannel', () => {
     const ch = new BotApiChannel({
       token: 'fake-token',
       tmpDir: '/tmp/test-bot-channel',
-      botFactory: () => ({ api: { sendMessage: sendMessageMock, sendVoice: sendVoiceMock }, on: vi.fn(), start: vi.fn(), stop: vi.fn(), botInfo: undefined } as never),
+      botFactory: () =>
+        ({
+          api: { sendMessage: sendMessageMock, sendVoice: sendVoiceMock },
+          on: vi.fn(),
+          start: vi.fn(),
+          stop: vi.fn(),
+          botInfo: undefined,
+        }) as never,
     });
     expect(ch.name).toBe('bot');
   });
@@ -475,7 +549,14 @@ describe('BotApiChannel', () => {
     const ch = new BotApiChannel({
       token: 'fake-token',
       tmpDir: '/tmp/test-bot-channel',
-      botFactory: () => ({ api: { sendMessage: sendMessageMock, sendVoice: sendVoiceMock }, on: vi.fn(), start: vi.fn(), stop: vi.fn(), botInfo: undefined } as never),
+      botFactory: () =>
+        ({
+          api: { sendMessage: sendMessageMock, sendVoice: sendVoiceMock },
+          on: vi.fn(),
+          start: vi.fn(),
+          stop: vi.fn(),
+          botInfo: undefined,
+        }) as never,
     });
     await ch.sendText('5988833079', 'hello world');
     expect(sendMessageMock).toHaveBeenCalledWith('5988833079', 'hello world');
@@ -485,7 +566,14 @@ describe('BotApiChannel', () => {
     const ch = new BotApiChannel({
       token: 'fake-token',
       tmpDir: '/tmp/test-bot-channel',
-      botFactory: () => ({ api: { sendMessage: sendMessageMock, sendVoice: sendVoiceMock }, on: vi.fn(), start: vi.fn(), stop: vi.fn(), botInfo: undefined } as never),
+      botFactory: () =>
+        ({
+          api: { sendMessage: sendMessageMock, sendVoice: sendVoiceMock },
+          on: vi.fn(),
+          start: vi.fn(),
+          stop: vi.fn(),
+          botInfo: undefined,
+        }) as never,
     });
     const audio = Buffer.from('opusbytes');
     await ch.sendVoice('5988833079', audio, 7);
@@ -497,11 +585,20 @@ describe('BotApiChannel', () => {
 
   it('onText forwards text messages with channel="bot"', () => {
     const handlers: Record<string, (ctx: unknown) => void> = {};
-    const onMock = vi.fn((event: string, handler: (ctx: unknown) => void) => { handlers[event] = handler; });
+    const onMock = vi.fn((event: string, handler: (ctx: unknown) => void) => {
+      handlers[event] = handler;
+    });
     const ch = new BotApiChannel({
       token: 'fake-token',
       tmpDir: '/tmp/test-bot-channel',
-      botFactory: () => ({ api: { sendMessage: sendMessageMock, sendVoice: sendVoiceMock }, on: onMock, start: vi.fn(), stop: vi.fn(), botInfo: undefined } as never),
+      botFactory: () =>
+        ({
+          api: { sendMessage: sendMessageMock, sendVoice: sendVoiceMock },
+          on: onMock,
+          start: vi.fn(),
+          stop: vi.fn(),
+          botInfo: undefined,
+        }) as never,
     });
     const received: unknown[] = [];
     ch.onText((m) => received.push(m));
@@ -510,13 +607,15 @@ describe('BotApiChannel', () => {
       chat: { id: 5988833079 },
       from: { id: 5988833079 },
     });
-    expect(received).toEqual([{
-      channel: 'bot',
-      chatId: '5988833079',
-      senderId: '5988833079',
-      messageId: '42',
-      text: 'hi',
-    }]);
+    expect(received).toEqual([
+      {
+        channel: 'bot',
+        chatId: '5988833079',
+        senderId: '5988833079',
+        messageId: '42',
+        text: 'hi',
+      },
+    ]);
   });
 });
 ```
@@ -524,14 +623,17 @@ describe('BotApiChannel', () => {
 - [ ] **Step 2: Run test, expect failure**
 
 Run:
+
 ```bash
 cd ~/SourceCode/telegram-bot && npx vitest run test_scripts/test-botApiChannel.ts
 ```
+
 Expected: FAIL — `Cannot find module '../bridge/src/channels/botApiChannel.js'`.
 
 - [ ] **Step 3: Implement BotApiChannel**
 
 Create `bridge/src/channels/botApiChannel.ts`:
+
 ```typescript
 import { Bot, InputFile, type Context } from 'grammy';
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -590,7 +692,8 @@ export class BotApiChannel implements Channel {
       const text = ctx.message?.text ?? '';
       const chatId = String(ctx.chat?.id ?? '');
       const senderId = String(ctx.from?.id ?? '');
-      const messageId = ctx.message?.message_id !== undefined ? String(ctx.message.message_id) : undefined;
+      const messageId =
+        ctx.message?.message_id !== undefined ? String(ctx.message.message_id) : undefined;
       const msg: ChannelMessage = { channel: this.name, chatId, senderId, text };
       if (messageId !== undefined) msg.messageId = messageId;
       this.textHandler(msg);
@@ -602,7 +705,8 @@ export class BotApiChannel implements Channel {
       if (!voice) return;
       const chatId = String(ctx.chat?.id ?? '');
       const senderId = String(ctx.from?.id ?? '');
-      const messageId = ctx.message?.message_id !== undefined ? String(ctx.message.message_id) : undefined;
+      const messageId =
+        ctx.message?.message_id !== undefined ? String(ctx.message.message_id) : undefined;
       let mediaPath: string | undefined;
       try {
         const file = await ctx.api.getFile(voice.file_id);
@@ -614,7 +718,10 @@ export class BotApiChannel implements Channel {
           writeFileSync(mediaPath, buf, { mode: 0o600 });
         }
       } catch (err) {
-        this.logger?.warn({ component: 'botApiChannel', err: err instanceof Error ? err.message : String(err) }, 'voice download failed');
+        this.logger?.warn(
+          { component: 'botApiChannel', err: err instanceof Error ? err.message : String(err) },
+          'voice download failed',
+        );
       }
       const msg: ChannelMessage = { channel: this.name, chatId, senderId };
       if (messageId !== undefined) msg.messageId = messageId;
@@ -629,7 +736,10 @@ export class BotApiChannel implements Channel {
     // bot.start() blocks until stop() — fire-and-forget with error logging.
     void this.bot.start({
       onStart: (info) => {
-        this.logger?.info({ component: 'botApiChannel', username: info.username }, `polling as @${info.username}`);
+        this.logger?.info(
+          { component: 'botApiChannel', username: info.username },
+          `polling as @${info.username}`,
+        );
       },
     });
   }
@@ -661,17 +771,21 @@ export class BotApiChannel implements Channel {
 - [ ] **Step 4: Run test, expect pass**
 
 Run:
+
 ```bash
 cd ~/SourceCode/telegram-bot && npx vitest run test_scripts/test-botApiChannel.ts
 ```
+
 Expected: PASS, 4 tests.
 
 - [ ] **Step 5: Typecheck**
 
 Run:
+
 ```bash
 cd ~/SourceCode/telegram-bot && npm run typecheck
 ```
+
 Expected: exit 0.
 
 - [ ] **Step 6: Commit**
@@ -685,36 +799,46 @@ cd ~/SourceCode/telegram-bot && git add bridge/src/channels/botApiChannel.ts tes
 ### Task 6: Wire `BotApiChannel` into the bridge
 
 **Files:**
+
 - Modify: `bridge/src/index.ts` (just the channel-construction block in `main()`)
 
 - [ ] **Step 1: Read the bot token + opt-in env**
 
 In `main()`, after the existing `loadConfig()` call, add:
+
 ```typescript
-  const botToken = process.env.TELEGRAM_BOT_TOKEN?.trim();
+const botToken = process.env.TELEGRAM_BOT_TOKEN?.trim();
 ```
 
 - [ ] **Step 2: Build the channels list conditionally**
 
 Replace:
+
 ```typescript
-  const channels: Channel[] = [savedMessages];
+const channels: Channel[] = [savedMessages];
 ```
+
 with:
+
 ```typescript
-  const channels: Channel[] = [savedMessages];
-  if (botToken) {
-    const botTmpDir = process.env.TELEGRAM_BRIDGE_BOT_TMPDIR ?? `${process.env.HOME ?? ''}/.telegram/bot-inbox`;
-    channels.push(new BotApiChannel({ token: botToken, tmpDir: botTmpDir, logger }));
-    logger.info({ component: 'bridge', botTmpDir }, 'bot api channel enabled (TELEGRAM_BOT_TOKEN set)');
-  } else {
-    logger.info({ component: 'bridge' }, 'bot api channel disabled (TELEGRAM_BOT_TOKEN not set)');
-  }
+const channels: Channel[] = [savedMessages];
+if (botToken) {
+  const botTmpDir =
+    process.env.TELEGRAM_BRIDGE_BOT_TMPDIR ?? `${process.env.HOME ?? ''}/.telegram/bot-inbox`;
+  channels.push(new BotApiChannel({ token: botToken, tmpDir: botTmpDir, logger }));
+  logger.info(
+    { component: 'bridge', botTmpDir },
+    'bot api channel enabled (TELEGRAM_BOT_TOKEN set)',
+  );
+} else {
+  logger.info({ component: 'bridge' }, 'bot api channel disabled (TELEGRAM_BOT_TOKEN not set)');
+}
 ```
 
 - [ ] **Step 3: Update reply routing — reply on the channel that sourced the message**
 
 `runClaudeTurn` currently uses `rt.channel.sendText/sendVoice`. We need to route replies back to the SAME channel the request came in on. Change `BridgeRuntime`:
+
 ```typescript
 interface BridgeRuntime {
   state: StateStore;
@@ -730,15 +854,25 @@ interface BridgeRuntime {
 ```
 
 Build it:
+
 ```typescript
-  const channelByName: Record<string, Channel> = {};
-  for (const ch of channels) channelByName[ch.name] = ch;
-  const rt: BridgeRuntime = {
-    state, channels, channelByName, logger, cwd, voiceCfg, stt, tts, plugins: pluginLoad.plugins,
-  };
+const channelByName: Record<string, Channel> = {};
+for (const ch of channels) channelByName[ch.name] = ch;
+const rt: BridgeRuntime = {
+  state,
+  channels,
+  channelByName,
+  logger,
+  cwd,
+  voiceCfg,
+  stt,
+  tts,
+  plugins: pluginLoad.plugins,
+};
 ```
 
 Change `runClaudeTurn` signature to take a channel name:
+
 ```typescript
 async function runClaudeTurn(
   prompt: string,
@@ -758,9 +892,11 @@ Update `handleTextMessage` and `handleVoiceMessage` to pass `msg.channel` into `
 - [ ] **Step 4: Typecheck + run all tests**
 
 Run:
+
 ```bash
 cd ~/SourceCode/telegram-bot && npm run typecheck && npx vitest run
 ```
+
 Expected: exit 0; all tests pass.
 
 - [ ] **Step 5: Commit**
@@ -774,12 +910,14 @@ cd ~/SourceCode/telegram-bot && git add bridge/src/index.ts && git commit -m "fe
 ### Task 7: Update `.env` and `.env.example`
 
 **Files:**
+
 - Modify: `~/SourceCode/telegram-bot/.env` (real value)
 - Modify: `~/SourceCode/telegram-bot/.env.example` (documentation)
 
 - [ ] **Step 1: Add token to live `.env`**
 
 Run:
+
 ```bash
 TOKEN=$(grep '^TELEGRAM_BOT_TOKEN=' ~/.claude/channels/telegram/.env | cut -d= -f2-)
 test -n "$TOKEN" || { echo "no token found in plugin .env"; exit 1; }
@@ -789,11 +927,13 @@ grep -q '^TELEGRAM_BOT_TOKEN=' ~/SourceCode/telegram-bot/.env && \
 chmod 600 ~/SourceCode/telegram-bot/.env
 grep '^TELEGRAM_BOT_TOKEN=' ~/SourceCode/telegram-bot/.env | sed 's/=\([0-9]*\):.*/=\1:.../'
 ```
+
 Expected: prints `TELEGRAM_BOT_TOKEN=8636866491:...`
 
 - [ ] **Step 2: Document in `.env.example`**
 
 Append to `~/SourceCode/telegram-bot/.env.example`:
+
 ```bash
 cat >> ~/SourceCode/telegram-bot/.env.example <<'EOF'
 
@@ -809,10 +949,12 @@ EOF
 - [ ] **Step 3: Clear `BRIDGE_PLUGIN_ALLOWLIST` (load all 40 plugins per user choice)**
 
 Run:
+
 ```bash
 sed -i '' 's/^BRIDGE_PLUGIN_ALLOWLIST=.*/BRIDGE_PLUGIN_ALLOWLIST=/' ~/SourceCode/telegram-bot/.env
 grep '^BRIDGE_PLUGIN_ALLOWLIST=' ~/SourceCode/telegram-bot/.env
 ```
+
 Expected: `BRIDGE_PLUGIN_ALLOWLIST=` (empty value). Empty allowlist = load every enabled plugin from `~/.claude/settings.json`.
 
 - [ ] **Step 4: Commit `.env.example` only — never the live `.env`**
@@ -820,6 +962,7 @@ Expected: `BRIDGE_PLUGIN_ALLOWLIST=` (empty value). Empty allowlist = load every
 ```bash
 cd ~/SourceCode/telegram-bot && git add .env.example && git commit -m "docs: document TELEGRAM_BOT_TOKEN env in example"
 ```
+
 Expected: `.env` is gitignored so `git status` should show only `.env.example` modified before the commit.
 
 ---
@@ -829,19 +972,23 @@ Expected: `.env` is gitignored so `git status` should show only `.env.example` m
 The plugin's bot poller will fight the bridge for the same getUpdates slot if both run. Disabling stops the plugin from spawning on next session start; `kill` removes the running process now.
 
 **Files:**
+
 - Modify: `~/.claude/settings.json` (`enabledPlugins` map)
 
 - [ ] **Step 1: Read current setting**
 
 Run:
+
 ```bash
 python3 -c "import json; d=json.load(open('$HOME/.claude/settings.json')); print('telegram@claude-plugins-official:', d.get('enabledPlugins', {}).get('telegram@claude-plugins-official'))"
 ```
+
 Expected: `telegram@claude-plugins-official: True`
 
 - [ ] **Step 2: Set to false (preserves all other settings)**
 
 Run:
+
 ```bash
 python3 - <<'PY'
 import json, pathlib
@@ -852,11 +999,13 @@ p.write_text(json.dumps(d, indent=2) + '\n')
 print('disabled')
 PY
 ```
+
 Expected: `disabled`
 
 - [ ] **Step 3: Kill the currently running plugin bot process**
 
 Run:
+
 ```bash
 PID=$(cat ~/.claude/channels/telegram/bot.pid 2>/dev/null)
 if [ -n "$PID" ] && kill -0 "$PID" 2>/dev/null; then
@@ -865,15 +1014,18 @@ else
   echo "no live bot.pid (already gone)"
 fi
 ```
+
 Expected: either `killed pid 70678` or `no live bot.pid`.
 
 - [ ] **Step 4: Verify the polling slot is free**
 
 Run:
+
 ```bash
 TOKEN=$(grep '^TELEGRAM_BOT_TOKEN=' ~/.claude/channels/telegram/.env | cut -d= -f2-)
 curl -s "https://api.telegram.org/bot${TOKEN}/getUpdates?timeout=2&limit=1" | python3 -m json.tool
 ```
+
 Expected: `"ok": true` (NOT 409 Conflict). Updates list may be empty — that's fine.
 
 ---
@@ -881,41 +1033,50 @@ Expected: `"ok": true` (NOT 409 Conflict). Updates list may be empty — that's 
 ### Task 9: Reload the bridge daemon
 
 **Files:**
+
 - Touched indirectly: `~/Library/LaunchAgents/com.weirdapps.telegram-claude-bridge.plist` (no edits, just reload)
 
 - [ ] **Step 1: Build (if the bridge runs from `dist/`) or skip (if `tsx`)**
 
 Run:
+
 ```bash
 cd ~/SourceCode/telegram-bot && npm run build
 ```
+
 Expected: exit 0. Confirms TS compiles end-to-end.
 
 - [ ] **Step 2: Restart the launchd job**
 
 Run:
+
 ```bash
 launchctl unload ~/Library/LaunchAgents/com.weirdapps.telegram-claude-bridge.plist 2>/dev/null
 launchctl load ~/Library/LaunchAgents/com.weirdapps.telegram-claude-bridge.plist
 sleep 3
 launchctl list | grep telegram-claude-bridge
 ```
+
 Expected: a non-zero PID and exit-status `0`.
 
 - [ ] **Step 3: Tail logs for the bot-channel boot line**
 
 Run:
+
 ```bash
 tail -50 ~/Library/Logs/telegram-claude-bridge.out.log | grep -E 'bot api channel|polling as @|bridge listening'
 ```
+
 Expected: lines like `bot api channel enabled`, `polling as @plessas_claude_bot`, `bridge listening`.
 
 - [ ] **Step 4: Confirm no 409 in err.log**
 
 Run:
+
 ```bash
 tail -50 ~/Library/Logs/telegram-claude-bridge.err.log | grep -E '409|Conflict' || echo "clean"
 ```
+
 Expected: `clean`.
 
 ---
@@ -929,11 +1090,13 @@ Send: `test from bot channel — what plugins are loaded?`
 - [ ] **Step 2: Watch the live log**
 
 Run (in a terminal, leave it running):
+
 ```bash
 tail -f ~/Library/Logs/telegram-claude-bridge.out.log | grep -E 'channel|bot|claude turn'
 ```
 
 Expected sequence within 10s:
+
 - `event: message_received` (from grammy via BotApiChannel)
 - `claude turn completed` line with `costUsd > 0`, `isError: false`
 - `event: message_sent` (the reply)
@@ -957,9 +1120,11 @@ Send a voice note to `@plessas_claude_bot`. Expected: STT transcribes, Claude re
 - [ ] **Step 1: Confirm clean tree**
 
 Run:
+
 ```bash
 cd ~/SourceCode/telegram-bot && git status
 ```
+
 Expected: `nothing to commit, working tree clean` (all earlier task commits already in).
 
 - [ ] **Step 2: Note the disabled plugin in CLAUDE.md (optional)**
@@ -969,6 +1134,7 @@ If the bridge's CLAUDE.md mentions the `telegram` plugin, update the line to say
 - [ ] **Step 3: Tag the release**
 
 Run:
+
 ```bash
 cd ~/SourceCode/telegram-bot && git tag -a v0.2.0-bot-channel -m "add Bot API channel; retire standalone telegram plugin"
 ```
@@ -978,6 +1144,7 @@ cd ~/SourceCode/telegram-bot && git tag -a v0.2.0-bot-channel -m "add Bot API ch
 ## Self-Review
 
 **Spec coverage:**
+
 - Channel abstraction (Task 2) ✓
 - MTProto wrapped (Task 3) ✓
 - Refactor index.ts (Task 4) ✓
@@ -994,5 +1161,6 @@ cd ~/SourceCode/telegram-bot && git tag -a v0.2.0-bot-channel -m "add Bot API ch
 **Type consistency:** `Channel.sendText(chatId: string, ...)` everywhere. `ChannelMessage.chatId: string` everywhere. `runClaudeTurn` updated to take string `chatId` (Task 6 step 3) — confirmed consistent with handler updates in Task 4.
 
 **Known caveats noted in plan:**
+
 - Both channels share `BridgeState.sessionId` (single Claude conversation across them). Acceptable for single-user setup; per-channel state is a v2 concern.
 - `BRIDGE_PLUGIN_ALLOWLIST` in current `.env` may be set to a curated subset (e.g. `trading-hub`-only). User chose "all 40 plugins" — clear or expand the env var before Task 9 reload.

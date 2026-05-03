@@ -19,7 +19,10 @@ function bigintReplacer(_key: string, value: unknown): unknown {
 export function sendFileCommand(): Command {
   return new Command('send-file')
     .description('Send a file as a Telegram Document (preserves the original filename).')
-    .requiredOption('--to <peer>', 'Recipient: @username, +phone (international), or numeric user ID')
+    .requiredOption(
+      '--to <peer>',
+      'Recipient: @username, +phone (international), or numeric user ID',
+    )
     .requiredOption('--file <path>', 'Absolute or relative path to the file to send')
     .option('--caption <text>', 'Optional caption for the file')
     .action(async (opts: { to: string; file: string; caption?: string }) => {

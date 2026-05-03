@@ -18,9 +18,7 @@ export function logoutCommand(): Command {
       const logger = createLogger(config.logLevel);
 
       const sessionExists = existsSync(config.sessionPath);
-      const sessionString = sessionExists
-        ? readFileSync(config.sessionPath, 'utf8').trim()
-        : '';
+      const sessionString = sessionExists ? readFileSync(config.sessionPath, 'utf8').trim() : '';
 
       if (!sessionString) {
         logger.info({ sessionPath: config.sessionPath }, 'No session found — nothing to log out');
@@ -42,7 +40,10 @@ export function logoutCommand(): Command {
         await client.logout();
         serverInvalidated = true;
       } catch (err) {
-        logger.error({ err }, 'Failed to invalidate server-side session — continuing with local cleanup');
+        logger.error(
+          { err },
+          'Failed to invalidate server-side session — continuing with local cleanup',
+        );
       } finally {
         try {
           await client.disconnect();

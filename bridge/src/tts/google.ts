@@ -97,7 +97,10 @@ export async function synthesize(
   }
 
   const audioContent = response.audioContent;
-  if (!audioContent || (typeof audioContent === 'string' ? audioContent.length === 0 : audioContent.byteLength === 0)) {
+  if (
+    !audioContent ||
+    (typeof audioContent === 'string' ? audioContent.length === 0 : audioContent.byteLength === 0)
+  ) {
     throw new SynthesisError('TTS returned empty audio');
   }
 
