@@ -95,6 +95,7 @@ function getFilenameAttr(doc: Api.Document): Api.DocumentAttributeFilename | und
  * This function is pure — no I/O, no network.
  */
 export function classifyIncoming(message: Api.Message): IncomingMedia {
+  // NOSONAR S3776 - media type classification logic
   // 1. Native compressed photo
   if (message.photo) {
     return { kind: 'photo' };

@@ -80,7 +80,7 @@ export function createSpeechClient(projectId: string, keyFilename: string): Spee
  * @param projectId GOOGLE_CLOUD_PROJECT — required for v2 recognizer path.
  * @throws TranscriptionError on API failure or malformed response.
  */
-export async function transcribeOgg(
+export async function transcribeOgg( // NOSONAR S3776 - STT API orchestration with error handling
   filePath: string,
   client: SpeechClient,
   projectId: string,

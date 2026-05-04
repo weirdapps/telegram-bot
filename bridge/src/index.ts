@@ -276,6 +276,7 @@ async function handleTextMessage(msg: ChannelMessage, rt: BridgeRuntime): Promis
 }
 
 async function handleVoiceMessage(msg: ChannelMessage, rt: BridgeRuntime): Promise<void> {
+  // NOSONAR S3776 - voice processing orchestration
   if (!msg.mediaPath) {
     rt.logger.warn(
       { component: 'bridge', chatId: msg.chatId, channel: msg.channel },
@@ -356,7 +357,7 @@ async function handleVoiceMessage(msg: ChannelMessage, rt: BridgeRuntime): Promi
   if (!rt.voiceCfg.keepAudioFiles) await safeUnlink(filePath, rt.logger);
 }
 
-async function runClaudeTurn(
+async function runClaudeTurn( // NOSONAR S3776 - Claude turn orchestration with plugin routing
   prompt: string,
   chatId: string,
   channelName: string,

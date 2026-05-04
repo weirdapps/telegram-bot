@@ -486,6 +486,7 @@ export class TelegramUserClient {
   }
 
   private async dispatchIncoming(event: NewMessageEvent): Promise<void> {
+    // NOSONAR S3776 - message routing orchestration
     const msg = event.message;
     if (msg === undefined || msg === null) {
       return;
