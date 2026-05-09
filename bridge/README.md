@@ -6,7 +6,7 @@ Conversation context survives across messages and across bridge restarts.
 
 ## Flow
 
-```
+```text
 incoming DM
     │
     ▼
@@ -46,7 +46,7 @@ FIFO queue ──▶ Agent SDK query() with resume=sessionId
 
 ## Required env (in repo-root `.env`)
 
-```
+```bash
 # Standard TelegramUserClient vars (set during initial setup):
 TELEGRAM_API_ID=...
 TELEGRAM_API_HASH=...
@@ -67,9 +67,9 @@ ANTHROPIC_MODEL=claude-opus-4-7[1m]
 
 Optional:
 
-```
-TELEGRAM_BRIDGE_STATE_PATH=/Users/plessas/.telegram/claude-bridge.state.json
-TELEGRAM_BRIDGE_CWD=/Users/plessas    # working dir for Claude (file access boundary)
+```bash
+TELEGRAM_BRIDGE_STATE_PATH=$HOME/.telegram/claude-bridge.state.json
+TELEGRAM_BRIDGE_CWD=$HOME    # working dir for Claude (file access boundary)
 ```
 
 ## Run in foreground
@@ -81,10 +81,16 @@ npm run bridge
 
 ## Install as LaunchAgent (auto-start at login + restart on crash)
 
+The repo ships `com.weirdapps.telegram-claude-bridge.plist.template` with `__HOME__` placeholders. Generate your local plist by substituting your `$HOME`:
+
 ```bash
 chmod +x ~/SourceCode/telegram-bot/bridge/launchd/run.sh
-cp ~/SourceCode/telegram-bot/bridge/launchd/com.weirdapps.telegram-claude-bridge.plist \
-   ~/Library/LaunchAgents/
+
+# Generate the plist with your real $HOME (rename the bundle prefix
+# from 'weirdapps' to your own reverse-DNS handle if you prefer):
+sed "s|__HOME__|$HOME|g" \
+    ~/SourceCode/telegram-bot/bridge/launchd/com.weirdapps.telegram-claude-bridge.plist.template \
+    > ~/Library/LaunchAgents/com.weirdapps.telegram-claude-bridge.plist
 
 launchctl bootstrap gui/$UID \
    ~/Library/LaunchAgents/com.weirdapps.telegram-claude-bridge.plist
@@ -117,7 +123,7 @@ the TCC permission to read script files inside `CloudStorage`, so launchd
 exec's `/bin/zsh` (a system binary, allowed) but then zsh can't open the
 script:
 
-```
+```text
 shell-init: error retrieving current directory: getcwd: cannot access parent directories: Operation not permitted
 /bin/zsh: can't open input file: .../bridge/launchd/run.sh
 ```

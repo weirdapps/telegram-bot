@@ -2,7 +2,11 @@ import { v2 } from '@google-cloud/speech';
 import { TextToSpeechClient } from '@google-cloud/text-to-speech';
 import { promises as fs } from 'node:fs';
 
-const PROJECT = 'gen-lang-client-0063450259';
+if (!process.env.GOOGLE_CLOUD_PROJECT) {
+  console.error('Set GOOGLE_CLOUD_PROJECT before running.');
+  process.exit(2);
+}
+const PROJECT: string = process.env.GOOGLE_CLOUD_PROJECT;
 
 async function main() {
   // 1. Synthesize a known-good OGG via TTS (we know TTS works from smoke test).

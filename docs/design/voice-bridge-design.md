@@ -36,7 +36,7 @@ A bidirectional voice channel on top of the existing text bridge:
 
 ### Component diagram
 
-```
+```text
                 ┌────────────────────────────────────┐
                 │  Telegram DM (voice or text)       │
                 └────────────────┬───────────────────┘
@@ -110,7 +110,7 @@ A bidirectional voice channel on top of the existing text bridge:
 
 ## 3. Repository layout
 
-```
+```text
 SourceCode/telegram-bot/
 ├── src/
 │   └── client/
@@ -429,15 +429,15 @@ The existing `handleMessage(text, ...)` is extended with optional parameters `in
 
 All vars throw `ConfigError` if absent (per project rule "no fallback for configuration").
 
-| Variable                            | Purpose                                                                                                                               | Example value                                        |
-| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
-| `VOICE_BRIDGE_GCP_KEY_PATH`         | Path to GCP service-account JSON key with `roles/speech.client` + `roles/serviceusage.serviceUsageConsumer` on `GOOGLE_CLOUD_PROJECT` | `/Users/plessas/.config/gcloud/voice-bridge-sa.json` |
-| `GOOGLE_CLOUD_PROJECT`              | GCP project for Speech v2 recognizer path                                                                                             | `gen-lang-client-0063450259`                         |
-| `VOICE_BRIDGE_TTS_VOICE_EL`         | TTS voice name for Greek replies                                                                                                      | `el-GR-Chirp3-HD-Aoede`                              |
-| `VOICE_BRIDGE_TTS_VOICE_EN`         | TTS voice name for English replies                                                                                                    | `en-US-Chirp3-HD-Aoede`                              |
-| `VOICE_BRIDGE_MAX_AUDIO_SECONDS`    | Cap on synthesised voice-note duration before truncation                                                                              | `60`                                                 |
-| `VOICE_BRIDGE_KEEP_AUDIO_FILES`     | `true` keeps downloaded OGG + synthesised replies on disk; `false` deletes after sending                                              | `false`                                              |
-| `VOICE_BRIDGE_REJECT_ABOVE_SECONDS` | Reject inbound voice notes longer than this (Cloud Speech sync limit safeguard)                                                       | `300`                                                |
+| Variable                            | Purpose                                                                                                                               | Example value                           |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------- |
+| `VOICE_BRIDGE_GCP_KEY_PATH`         | Path to GCP service-account JSON key with `roles/speech.client` + `roles/serviceusage.serviceUsageConsumer` on `GOOGLE_CLOUD_PROJECT` | `~/.config/gcloud/voice-bridge-sa.json` |
+| `GOOGLE_CLOUD_PROJECT`              | GCP project for Speech v2 recognizer path                                                                                             | `__YOUR_GCP_PROJECT__`                  |
+| `VOICE_BRIDGE_TTS_VOICE_EL`         | TTS voice name for Greek replies                                                                                                      | `el-GR-Chirp3-HD-Aoede`                 |
+| `VOICE_BRIDGE_TTS_VOICE_EN`         | TTS voice name for English replies                                                                                                    | `en-US-Chirp3-HD-Aoede`                 |
+| `VOICE_BRIDGE_MAX_AUDIO_SECONDS`    | Cap on synthesised voice-note duration before truncation                                                                              | `60`                                    |
+| `VOICE_BRIDGE_KEEP_AUDIO_FILES`     | `true` keeps downloaded OGG + synthesised replies on disk; `false` deletes after sending                                              | `false`                                 |
+| `VOICE_BRIDGE_REJECT_ABOVE_SECONDS` | Reject inbound voice notes longer than this (Cloud Speech sync limit safeguard)                                                       | `300`                                   |
 
 **Why `VOICE_BRIDGE_GCP_KEY_PATH` and NOT `GOOGLE_APPLICATION_CREDENTIALS`**: the bridge process also runs the Anthropic Agent SDK in Vertex mode (`CLAUDE_CODE_USE_VERTEX=1`). The Anthropic SDK reads `GOOGLE_APPLICATION_CREDENTIALS` from process.env to authenticate Claude→Vertex calls. Using the standard name would cause the Anthropic SDK to authenticate as the personal voice-bridge SA (no permission on the NBG Vertex project) and crash every Claude turn with `aiplatform.endpoints.predict denied`. By using a bridge-namespaced var and passing the path explicitly to STT/TTS clients via `keyFilename`, the Anthropic SDK falls back to ADC (NBG account) as intended.
 

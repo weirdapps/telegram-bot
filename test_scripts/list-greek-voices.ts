@@ -2,10 +2,13 @@
 import { TextToSpeechClient } from '@google-cloud/text-to-speech';
 
 async function main(): Promise<void> {
-  const c = new TextToSpeechClient({
-    projectId: 'gen-lang-client-0063450259',
-    keyFilename: '/Users/plessas/.config/gcloud/voice-bridge-sa.json',
-  });
+  const projectId = process.env.GOOGLE_CLOUD_PROJECT;
+  const keyFilename = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+  if (!projectId || !keyFilename) {
+    console.error('Set GOOGLE_CLOUD_PROJECT and GOOGLE_APPLICATION_CREDENTIALS before running.');
+    process.exit(2);
+  }
+  const c = new TextToSpeechClient({ projectId, keyFilename });
   const [r] = await c.listVoices({ languageCode: 'el-GR' });
   const voices = r.voices ?? [];
   const groups: Record<string, string[]> = {};

@@ -17,7 +17,7 @@ Workaround: use a **service-account key** scoped to the personal GCP project for
 ## Prerequisites
 
 - The voice bridge code is already implemented (plan-002 completed 2026-04-23, hardened 2026-04-24).
-- You have a personal Google account (e.g. `plessasdimitrios@gmail.com`) with a personal GCP project you own (e.g. `gen-lang-client-0063450259` "claude code").
+- You have a personal Google account (e.g. `you@gmail.com`) with a personal GCP project you own (e.g. `__YOUR_GCP_PROJECT__` "claude code").
 - You're at the Mac with browser access (only Step 1 requires interactive OAuth).
 
 ---
@@ -27,16 +27,16 @@ Workaround: use a **service-account key** scoped to the personal GCP project for
 This is `gcloud auth login`, NOT `gcloud auth application-default login`. It writes to `~/.config/gcloud/credentials.db` and does NOT touch ADC at `~/.config/gcloud/application_default_credentials.json`. Your existing NBG Vertex auth is unaffected.
 
 ```bash
-gcloud auth login --account=plessasdimitrios@gmail.com
+gcloud auth login --account=you@gmail.com
 ```
 
-A browser opens. **Carefully select `plessasdimitrios@gmail.com` in the picker** — if your browser is signed into both NBG and personal accounts, the picker may default to the wrong one. Use Incognito or sign out of `dimitrios.plessas@nbg.gr` first if unsure. The command prints `You are now logged in as [plessasdimitrios@gmail.com]` on success.
+A browser opens. **Carefully select `you@gmail.com` in the picker** — if your browser is signed into both NBG and personal accounts, the picker may default to the wrong one. Use Incognito or sign out of `your-work@example.com` first if unsure. The command prints `You are now logged in as [you@gmail.com]` on success.
 
 Verify:
 
 ```bash
 gcloud auth list --format="value(account)"
-# Expected: at least one row showing plessasdimitrios@gmail.com
+# Expected: at least one row showing you@gmail.com
 ```
 
 ---
@@ -44,8 +44,8 @@ gcloud auth list --format="value(account)"
 ## Step 2 — Enable the two Cloud APIs on the personal project
 
 ```bash
-gcloud --account=plessasdimitrios@gmail.com \
-  --project=gen-lang-client-0063450259 \
+gcloud --account=you@gmail.com \
+  --project=__YOUR_GCP_PROJECT__ \
   services enable speech.googleapis.com texttospeech.googleapis.com
 ```
 
@@ -57,27 +57,27 @@ Both APIs have generous free tiers (60 min/month STT, ~1M chars/month TTS for Ch
 
 ```bash
 # Create the SA
-gcloud --account=plessasdimitrios@gmail.com \
-  --project=gen-lang-client-0063450259 \
+gcloud --account=you@gmail.com \
+  --project=__YOUR_GCP_PROJECT__ \
   iam service-accounts create telegram-voice-bridge \
   --display-name="Telegram Voice Bridge" \
   --description="STT/TTS for the Telegram→Claude voice bridge"
 
 # Grant roles (TWO are required — see WARNING below)
-SA="serviceAccount:telegram-voice-bridge@gen-lang-client-0063450259.iam.gserviceaccount.com"
-gcloud --account=plessasdimitrios@gmail.com \
-  projects add-iam-policy-binding gen-lang-client-0063450259 \
+SA="serviceAccount:telegram-voice-bridge@__YOUR_GCP_PROJECT__.iam.gserviceaccount.com"
+gcloud --account=you@gmail.com \
+  projects add-iam-policy-binding __YOUR_GCP_PROJECT__ \
   --member="$SA" --role=roles/serviceusage.serviceUsageConsumer --condition=None
-gcloud --account=plessasdimitrios@gmail.com \
-  projects add-iam-policy-binding gen-lang-client-0063450259 \
+gcloud --account=you@gmail.com \
+  projects add-iam-policy-binding __YOUR_GCP_PROJECT__ \
   --member="$SA" --role=roles/speech.client --condition=None
 
 # Download key with mode 0600
-gcloud --account=plessasdimitrios@gmail.com \
+gcloud --account=you@gmail.com \
   iam service-accounts keys create \
-  /Users/plessas/.config/gcloud/voice-bridge-sa.json \
-  --iam-account=telegram-voice-bridge@gen-lang-client-0063450259.iam.gserviceaccount.com
-chmod 600 /Users/plessas/.config/gcloud/voice-bridge-sa.json
+  ~/.config/gcloud/voice-bridge-sa.json \
+  --iam-account=telegram-voice-bridge@__YOUR_GCP_PROJECT__.iam.gserviceaccount.com
+chmod 600 ~/.config/gcloud/voice-bridge-sa.json
 ```
 
 **WARNING — both roles are required**:
@@ -93,8 +93,8 @@ After granting, IAM propagation can take 10–60 s.
 
 ```bash
 cd ~/SourceCode/telegram-bot   # (or your CloudStorage-mirrored path)
-GOOGLE_APPLICATION_CREDENTIALS=/Users/plessas/.config/gcloud/voice-bridge-sa.json \
-  GOOGLE_CLOUD_PROJECT=gen-lang-client-0063450259 \
+GOOGLE_APPLICATION_CREDENTIALS=~/.config/gcloud/voice-bridge-sa.json \
+  GOOGLE_CLOUD_PROJECT=__YOUR_GCP_PROJECT__ \
   npx tsx test_scripts/google-cloud-smoke.ts
 ```
 
@@ -113,8 +113,8 @@ Append to `~/SourceCode/telegram-bot/.env`:
 ```bash
 # --- Voice Bridge (plan-002) ---
 # NOTE: bridge-namespaced var, NOT GOOGLE_APPLICATION_CREDENTIALS — see voice-bridge-design.md §5
-VOICE_BRIDGE_GCP_KEY_PATH=/Users/plessas/.config/gcloud/voice-bridge-sa.json
-GOOGLE_CLOUD_PROJECT=gen-lang-client-0063450259
+VOICE_BRIDGE_GCP_KEY_PATH=~/.config/gcloud/voice-bridge-sa.json
+GOOGLE_CLOUD_PROJECT=__YOUR_GCP_PROJECT__
 VOICE_BRIDGE_TTS_VOICE_EL=el-GR-Chirp3-HD-Aoede
 VOICE_BRIDGE_TTS_VOICE_EN=en-US-Chirp3-HD-Aoede
 VOICE_BRIDGE_MAX_AUDIO_SECONDS=60
@@ -125,8 +125,8 @@ VOICE_BRIDGE_KEEP_AUDIO_FILES=false
 Pick different Chirp 3 HD voices if you prefer. List them with:
 
 ```bash
-gcloud --account=plessasdimitrios@gmail.com \
-  --project=gen-lang-client-0063450259 \
+gcloud --account=you@gmail.com \
+  --project=__YOUR_GCP_PROJECT__ \
   ml language list-voices \
   --filter="languageCodes=el-GR AND name:Chirp3-HD" --format="value(name)"
 ```
@@ -172,21 +172,21 @@ SA keys do not expire. To rotate:
 
 ```bash
 # Create the new key first (overwrites the old file)
-gcloud --account=plessasdimitrios@gmail.com \
-  iam service-accounts keys create /Users/plessas/.config/gcloud/voice-bridge-sa.json \
-  --iam-account=telegram-voice-bridge@gen-lang-client-0063450259.iam.gserviceaccount.com
-chmod 600 /Users/plessas/.config/gcloud/voice-bridge-sa.json
+gcloud --account=you@gmail.com \
+  iam service-accounts keys create ~/.config/gcloud/voice-bridge-sa.json \
+  --iam-account=telegram-voice-bridge@__YOUR_GCP_PROJECT__.iam.gserviceaccount.com
+chmod 600 ~/.config/gcloud/voice-bridge-sa.json
 
 # Restart bridge (picks up new key on next STT/TTS call)
 launchctl kickstart -k gui/$UID/com.weirdapps.telegram-claude-bridge
 
 # List existing keys, pick the OLD key id, delete it
-gcloud --account=plessasdimitrios@gmail.com \
+gcloud --account=you@gmail.com \
   iam service-accounts keys list \
-  --iam-account=telegram-voice-bridge@gen-lang-client-0063450259.iam.gserviceaccount.com
-gcloud --account=plessasdimitrios@gmail.com \
+  --iam-account=telegram-voice-bridge@__YOUR_GCP_PROJECT__.iam.gserviceaccount.com
+gcloud --account=you@gmail.com \
   iam service-accounts keys delete <OLD_KEY_ID> \
-  --iam-account=telegram-voice-bridge@gen-lang-client-0063450259.iam.gserviceaccount.com
+  --iam-account=telegram-voice-bridge@__YOUR_GCP_PROJECT__.iam.gserviceaccount.com
 ```
 
 ---
