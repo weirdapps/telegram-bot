@@ -57,6 +57,8 @@
   },
   "overrides": {
     "uuid": ">=14.0.0",
-    "@anthropic-ai/sdk": ">=0.92.0"
+    "@anthropic-ai/sdk": ">=0.92.0",
+    "protobufjs": ">=7.5.6",
+    "@protobufjs/utf8": ">=1.1.1"
   }
 }
