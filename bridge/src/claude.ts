@@ -1,5 +1,6 @@
 import { query, type SDKResultMessage, type SdkPluginConfig } from '@anthropic-ai/claude-agent-sdk';
 import { canUseTool, getPermissionMode } from './permissions.js';
+import { withFallbackOnRefusal } from './claudeFallback.js';
 
 export interface ClaudeResult {
   text: string;
@@ -28,55 +29,71 @@ export async function askClaude(opts: {
   plugins?: SdkPluginConfig[];
 }): Promise<ClaudeResult> {
   const mode = getPermissionMode();
-  const abortController = new AbortController();
-  const stream = query({
-    prompt: opts.prompt,
-    options: {
-      abortController,
-      resume: opts.resume ?? undefined,
-      permissionMode: mode,
-      // canUseTool only fires in 'default' mode; passing it in
-      // bypassPermissions is a no-op but harmless.
-      canUseTool: mode === 'default' ? canUseTool : undefined,
-      cwd: opts.cwd,
-      // Plugins resolved at bridge startup (see pluginLoader.ts). Empty array
-      // is allowed — SDK then runs with built-in tools only.
-      plugins: opts.plugins ?? [],
-      // Mirror CLI behavior: read user + project settings (env, statusLine,
-      // global hooks). Without this the SDK uses zero settings sources.
-      settingSources: ['user', 'project'],
-    },
-  });
 
-  let idleTimer: ReturnType<typeof setTimeout> | undefined;
-  const resetIdle = (): void => {
-    if (idleTimer) clearTimeout(idleTimer);
-    idleTimer = setTimeout(() => {
-      abortController.abort(new Error(`SDK silent for ${SDK_SILENCE_TIMEOUT_MS / 1000}s`));
-    }, SDK_SILENCE_TIMEOUT_MS);
+  // One agentic turn. `modelOverride` (null = default ANTHROPIC_MODEL = Opus 4.8 @ eu)
+  // lets the refusal-fallback re-run the turn on Opus 4.6 — which the bridge .env routes
+  // to europe-west1 via VERTEX_REGION_CLAUDE_4_6_OPUS — without touching process env.
+  const runOnce = async (modelOverride: string | null): Promise<SDKResultMessage> => {
+    const abortController = new AbortController();
+    const stream = query({
+      prompt: opts.prompt,
+      options: {
+        abortController,
+        resume: opts.resume ?? undefined,
+        permissionMode: mode,
+        // canUseTool only fires in 'default' mode; passing it in
+        // bypassPermissions is a no-op but harmless.
+        canUseTool: mode === 'default' ? canUseTool : undefined,
+        cwd: opts.cwd,
+        // Plugins resolved at bridge startup (see pluginLoader.ts). Empty array
+        // is allowed — SDK then runs with built-in tools only.
+        plugins: opts.plugins ?? [],
+        // Mirror CLI behavior: read user + project settings (env, statusLine,
+        // global hooks). Without this the SDK uses zero settings sources.
+        settingSources: ['user', 'project'],
+        ...(modelOverride ? { model: modelOverride } : {}),
+      },
+    });
+
+    let idleTimer: ReturnType<typeof setTimeout> | undefined;
+    const resetIdle = (): void => {
+      if (idleTimer) clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => {
+        abortController.abort(new Error(`SDK silent for ${SDK_SILENCE_TIMEOUT_MS / 1000}s`));
+      }, SDK_SILENCE_TIMEOUT_MS);
+    };
+
+    let result: SDKResultMessage | null = null;
+    resetIdle();
+    try {
+      for await (const msg of stream) {
+        resetIdle();
+        if (msg.type === 'result') {
+          result = msg;
+        }
+      }
+    } catch (err) {
+      if (abortController.signal.aborted) {
+        const reason = abortController.signal.reason;
+        throw reason instanceof Error ? reason : new Error(`Claude SDK aborted: ${String(reason)}`);
+      }
+      throw err;
+    } finally {
+      if (idleTimer) clearTimeout(idleTimer);
+    }
+    if (result === null) {
+      throw new Error('Claude SDK returned no terminal result message');
+    }
+    return result;
   };
 
-  let result: SDKResultMessage | null = null;
-  resetIdle();
-  try {
-    for await (const msg of stream) {
-      resetIdle();
-      if (msg.type === 'result') {
-        result = msg;
-      }
-    }
-  } catch (err) {
-    if (abortController.signal.aborted) {
-      const reason = abortController.signal.reason;
-      throw reason instanceof Error ? reason : new Error(`Claude SDK aborted: ${String(reason)}`);
-    }
-    throw err;
-  } finally {
-    if (idleTimer) clearTimeout(idleTimer);
-  }
-  if (result === null) {
-    throw new Error('Claude SDK returned no terminal result message');
-  }
+  // Best-effort: if Opus 4.8 returns a spurious policy refusal, re-run once on Opus 4.6.
+  const result = await withFallbackOnRefusal(runOnce, {
+    onFallback: () =>
+      console.warn(
+        '[bridge] Opus refusal detected — downgrading to Opus 4.6 (europe-west1) fallback',
+      ),
+  });
 
   const text =
     result.subtype === 'success'
