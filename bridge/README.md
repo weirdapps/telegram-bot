@@ -61,8 +61,8 @@ TELEGRAM_BRIDGE_ALLOWED_SENDER_IDS=5988833079    # comma-separated numeric IDs
 # Inherits these to use the same Claude provider as ~/nbg_claude.sh:
 CLAUDE_CODE_USE_VERTEX=1
 ANTHROPIC_VERTEX_PROJECT_ID=nbg-...
-CLOUD_ML_REGION=global
-ANTHROPIC_MODEL=claude-opus-4-7[1m]
+CLOUD_ML_REGION=europe-west1
+ANTHROPIC_MODEL=claude-opus-4-8[1m]
 ```
 
 Optional:
