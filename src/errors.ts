@@ -17,11 +17,16 @@ export class ConfigError extends Error {
     this.name = 'ConfigError';
     this.variable = variable;
     if (
-      typeof (Error as unknown as { captureStackTrace?: (t: object, c: Function) => void })
-        .captureStackTrace === 'function'
+      typeof (
+        Error as unknown as {
+          captureStackTrace?: (t: object, c: new (...args: never[]) => unknown) => void;
+        }
+      ).captureStackTrace === 'function'
     ) {
       (
-        Error as unknown as { captureStackTrace: (t: object, c: Function) => void }
+        Error as unknown as {
+          captureStackTrace: (t: object, c: new (...args: never[]) => unknown) => void;
+        }
       ).captureStackTrace(this, ConfigError);
     }
   }
@@ -42,11 +47,16 @@ export class PeerNotFoundError extends Error {
     this.input = input;
     this.kindsTried = kindsTried;
     if (
-      typeof (Error as unknown as { captureStackTrace?: (t: object, c: Function) => void })
-        .captureStackTrace === 'function'
+      typeof (
+        Error as unknown as {
+          captureStackTrace?: (t: object, c: new (...args: never[]) => unknown) => void;
+        }
+      ).captureStackTrace === 'function'
     ) {
       (
-        Error as unknown as { captureStackTrace: (t: object, c: Function) => void }
+        Error as unknown as {
+          captureStackTrace: (t: object, c: new (...args: never[]) => unknown) => void;
+        }
       ).captureStackTrace(this, PeerNotFoundError);
     }
   }
@@ -65,11 +75,16 @@ export class UnsupportedMediaError extends Error {
     this.name = 'UnsupportedMediaError';
     this.mediaKind = mediaKind;
     if (
-      typeof (Error as unknown as { captureStackTrace?: (t: object, c: Function) => void })
-        .captureStackTrace === 'function'
+      typeof (
+        Error as unknown as {
+          captureStackTrace?: (t: object, c: new (...args: never[]) => unknown) => void;
+        }
+      ).captureStackTrace === 'function'
     ) {
       (
-        Error as unknown as { captureStackTrace: (t: object, c: Function) => void }
+        Error as unknown as {
+          captureStackTrace: (t: object, c: new (...args: never[]) => unknown) => void;
+        }
       ).captureStackTrace(this, UnsupportedMediaError);
     }
   }
@@ -91,11 +106,16 @@ export class LoginRequiredError extends Error {
       this.cause = cause;
     }
     if (
-      typeof (Error as unknown as { captureStackTrace?: (t: object, c: Function) => void })
-        .captureStackTrace === 'function'
+      typeof (
+        Error as unknown as {
+          captureStackTrace?: (t: object, c: new (...args: never[]) => unknown) => void;
+        }
+      ).captureStackTrace === 'function'
     ) {
       (
-        Error as unknown as { captureStackTrace: (t: object, c: Function) => void }
+        Error as unknown as {
+          captureStackTrace: (t: object, c: new (...args: never[]) => unknown) => void;
+        }
       ).captureStackTrace(this, LoginRequiredError);
     }
   }

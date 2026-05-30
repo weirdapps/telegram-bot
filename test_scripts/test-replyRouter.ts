@@ -9,7 +9,6 @@ import {
   estimateSpeechDuration,
   truncateForSpeech,
   type VoiceMode,
-  type InputModality,
 } from '../bridge/src/replyRouter.js';
 
 const SHORT_REPLY = 'hello, this is a short reply.';

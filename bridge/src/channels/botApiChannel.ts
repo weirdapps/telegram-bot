@@ -1,4 +1,4 @@
-import { Bot, InputFile, type Context, type Api } from 'grammy';
+import { Bot, InputFile, type Context } from 'grammy';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Logger } from '../../../src/logger/logger.js';

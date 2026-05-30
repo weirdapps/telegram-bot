@@ -3,7 +3,7 @@ import { existsSync, readFileSync, promises as fs } from 'node:fs';
 import { TelegramUserClient, loadConfig, createLogger } from '../../src/index.js';
 import type { Logger } from '../../src/logger/logger.js';
 import { askClaude } from './claude.js';
-import { StateStore, type BridgeState } from './state.js';
+import { StateStore } from './state.js';
 import { parseAllowlist, isAllowed } from './allowlist.js';
 import { splitMessage } from './splitMessage.js';
 import { handleVoiceCommand } from './voiceMode.js';
