@@ -1,88 +1,159 @@
-# telegram-user-client
+# telegram-bot
 
-A TypeScript library and thin CLI that logs into Telegram **as a real user account** (MTProto via [GramJS](https://github.com/gram-js/gramjs)), sends direct messages (text / image / document), and subscribes to incoming DMs with automatic download of photo, voice, and audio media.
+[![CI](https://github.com/weirdapps/telegram-bot/actions/workflows/ci.yml/badge.svg)](https://github.com/weirdapps/telegram-bot/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/weirdapps/telegram-bot/actions/workflows/codeql.yml/badge.svg)](https://github.com/weirdapps/telegram-bot/actions/workflows/codeql.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Node.js ≥20](https://img.shields.io/badge/Node.js-%E2%89%A520-brightgreen)](https://nodejs.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-6-blue)](https://www.typescriptlang.org/)
 
-> Not a bot. Authenticates as your Telegram account, so outgoing messages appear authored by you.
+A **Telegram → Claude AI bridge** that routes text and voice messages from Telegram to Claude (via the Claude Agent SDK), then sends the reply back — including synthesized voice responses via Google Cloud TTS.
+
+Two input channels are supported simultaneously:
+
+- **Saved Messages** (MTProto user client via [GramJS](https://github.com/gram-js/gramjs)) — messages sent to your own Saved Messages act as a private command channel.
+- **Bot API** (grammY) — a regular Telegram bot token, for interactions with other users.
+
+---
+
+## How it works
+
+```text
+Telegram (text or voice note)
+        │
+        ▼
+  ┌─────────────┐    STT (Google Cloud Speech)
+  │   bridge/   │◄──────────────────────────────── voice note → transcript
+  │  index.ts   │
+  │             │──► askClaude() via Claude Agent SDK
+  │             │
+  │             │◄── Claude response (text)
+  │             │
+  │             │──► TTS (Google Cloud TTS) ──► voice reply
+  └─────────────┘
+        │
+        ▼
+  Telegram reply (text + optional voice note)
+```
+
+Voice replies mirror the language Claude detects in the transcript (Greek ↔ English). Markdown is stripped before TTS so asterisks and hashes are never read aloud.
 
 ---
 
 ## Prerequisites
 
-- **Node.js 20 LTS** or newer.
-- A Telegram developer **api_id** and **api_hash** obtained from <https://my.telegram.org> → _API development tools_.
-- Your own Telegram phone number.
+- **Node.js 20 LTS** or newer
+- A Telegram developer **api_id** and **api_hash** from <https://my.telegram.org> → _API development tools_ (required for the MTProto/Saved Messages channel)
+- A **Telegram Bot Token** from [@BotFather](https://t.me/BotFather) (required for the Bot API channel)
+- A **Google Cloud project** with Speech-to-Text and Text-to-Speech APIs enabled, and a service account key file
+- **Claude** installed and configured (`claude --version` must work) — the bridge invokes it as a subprocess via the Claude Agent SDK
+
+---
 
 ## Install
 
 ```bash
 npm install
-npm run link        # builds and registers `telegram-cli` (and short alias `tg`) on your PATH
+npm run link        # builds and globally links the `telegram-cli` / `tg` commands
 ```
 
-`npm run link` calls `npm link` under the hood — it creates a global symlink to the compiled CLI entry. After it finishes you can invoke the tool from any directory as `telegram-cli …` or `tg …`. To undo, run `npm run unlink`. If you prefer not to install globally, substitute `npm run cli --` for `telegram-cli` in every command below.
+`npm run link` calls `npm link` under the hood — it compiles TypeScript and creates a global symlink so you can run `telegram-cli …` or `tg …` from any directory. To undo: `npm run unlink`.
 
-## Quickstart
-
-1. Copy the environment template and fill in real values:
-
-   ```bash
-   cp .env.example .env
-   # then open .env and set TELEGRAM_API_ID / TELEGRAM_API_HASH / TELEGRAM_PHONE_NUMBER
-   # plus TELEGRAM_SESSION_PATH, TELEGRAM_DOWNLOAD_DIR, TELEGRAM_LOG_LEVEL
-   ```
-
-2. Log in once interactively (phone code + optional 2FA). This writes the serialized `StringSession` to `TELEGRAM_SESSION_PATH`:
-
-   ```bash
-   telegram-cli login
-   ```
-
-3. Send a text DM:
-
-   ```bash
-   telegram-cli send-text --to @username --text "hello from the CLI"
-   ```
-
-4. Start listening for incoming DMs. Each new message is printed to stdout as a JSON line; photo / voice / audio attachments are downloaded to `TELEGRAM_DOWNLOAD_DIR`. Press `Ctrl+C` to exit cleanly:
-
-   ```bash
-   telegram-cli listen
-   ```
+If you prefer not to install globally, substitute `npm run cli --` for every `telegram-cli` command below.
 
 ---
 
-## CLI reference
+## Quickstart
 
-All commands are available as `telegram-cli <subcommand>` (or `tg <subcommand>`, or `npm run cli -- <subcommand>` if you skipped `npm run link`).
+### 1. Configure environment
 
-| Subcommand   | Flags                                              | Description                                                                                                                                                     |
-| ------------ | -------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `login`      | —                                                  | Interactive login. Prompts for the SMS/Telegram login code and the 2FA password (if enabled). Persists the session to `TELEGRAM_SESSION_PATH`.                  |
-| `logout`     | —                                                  | Invalidates the session server-side and deletes the local session file.                                                                                         |
-| `send-text`  | `--to <peer>` `--text <string>`                    | Sends a plain-text message.                                                                                                                                     |
-| `send-image` | `--to <peer>` `--file <path>` `[--caption <text>]` | Sends an image as a Telegram photo.                                                                                                                             |
-| `send-file`  | `--to <peer>` `--file <path>` `[--caption <text>]` | Sends an arbitrary file as a Telegram document (preserves the filename).                                                                                        |
-| `listen`     | —                                                  | Opens a persistent MTProto connection. Emits one JSON line per incoming DM. Downloads photo / voice / audio attachments. Exits cleanly on `SIGINT` / `SIGTERM`. |
+```bash
+cp .env.example .env
+# Edit .env — at minimum set the vars below
+```
 
-### Peer formats
+Key environment variables:
 
-`<peer>` accepts any of:
+| Variable                             | Required        | Description                                 |
+| ------------------------------------ | --------------- | ------------------------------------------- |
+| `TELEGRAM_API_ID`                    | MTProto channel | From my.telegram.org                        |
+| `TELEGRAM_API_HASH`                  | MTProto channel | From my.telegram.org                        |
+| `TELEGRAM_PHONE_NUMBER`              | MTProto channel | Your account phone number                   |
+| `TELEGRAM_BOT_TOKEN`                 | Bot API channel | From @BotFather                             |
+| `TELEGRAM_SESSION_PATH`              | MTProto channel | Path to persist the session string          |
+| `TELEGRAM_DOWNLOAD_DIR`              | Both            | Where voice/media files are downloaded      |
+| `TELEGRAM_BRIDGE_ALLOWED_SENDER_IDS` | Both            | Comma-separated Telegram user IDs to accept |
+| `GOOGLE_CLOUD_PROJECT`               | Voice           | GCP project ID                              |
+| `GOOGLE_APPLICATION_CREDENTIALS`     | Voice           | Path to service account key JSON            |
 
-- `@username` — e.g. `@alice`.
-- `+<phone>` — international phone, e.g. `+306900000000`.
-- Numeric user ID — e.g. `123456789`.
+See `.env.example` for the full list including voice-tuning and bridge behaviour flags.
 
-Resolution order when the input is ambiguous is **username → phone → numeric ID**.
+### 2. Log in (MTProto channel only)
 
-### Missing configuration
+```bash
+telegram-cli login
+```
 
-Every required env var must be set. If any is missing, the CLI exits non-zero with a `ConfigError` that names the offending variable. **There are no default values for required config.**
+This prompts for your SMS/Telegram login code and optional 2FA password, then writes the serialised session to `TELEGRAM_SESSION_PATH`. You only need to do this once.
+
+### 3. Start the bridge
+
+```bash
+npm run bridge
+```
+
+The bridge starts listening on all configured channels. Send a message to your Telegram Saved Messages (or to the bot) and Claude replies.
+
+---
+
+## Telegram commands
+
+The bridge handles a small set of slash commands inline, without forwarding them to Claude:
+
+| Command                        | Description                                                         |
+| ------------------------------ | ------------------------------------------------------------------- |
+| `/clear`                       | Reset the Claude session — next message starts a fresh conversation |
+| `/status`                      | Show current session ID, last message time, and voice mode          |
+| `/voice [mirror\|always\|off]` | Change voice reply behaviour                                        |
+| `/help`                        | List available commands                                             |
+
+**Voice modes:**
+
+- `off` — text replies only, no voice synthesis
+- `mirror` (default) — voice reply when the input was a voice note; text otherwise
+- `always` — always reply with a voice note, regardless of input modality
+
+---
+
+## telegram-cli — standalone Telegram client
+
+The package also ships a standalone CLI for sending and receiving Telegram messages without the bridge. Useful for scripting or ad-hoc use.
+
+```bash
+telegram-cli <subcommand> [flags]
+```
+
+| Subcommand   | Flags                                              | Description                                                                                          |
+| ------------ | -------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `login`      | —                                                  | Interactive login; persists session to `TELEGRAM_SESSION_PATH`                                       |
+| `logout`     | —                                                  | Invalidates the session server-side and deletes the local file                                       |
+| `send-text`  | `--to <peer>` `--text <string>`                    | Send a plain-text DM                                                                                 |
+| `send-image` | `--to <peer>` `--file <path>` `[--caption <text>]` | Send an image as a Telegram photo                                                                    |
+| `send-file`  | `--to <peer>` `--file <path>` `[--caption <text>]` | Send an arbitrary file as a document                                                                 |
+| `listen`     | —                                                  | Open a persistent MTProto connection; emit one JSON line per incoming DM; download media attachments |
+
+**Peer formats accepted by `--to`:**
+
+- `@username` — e.g. `@alice`
+- `+<phone>` — international format, e.g. `+306900000000`
+- Numeric user ID — e.g. `123456789`
 
 ---
 
 ## Library usage
 
-```ts
+The package exports `TelegramUserClient` for use in your own TypeScript/JavaScript projects:
+
+```typescript
 import { TelegramUserClient, loadConfig, createLogger } from 'telegram-user-client';
 
 const cfg = loadConfig();
@@ -91,7 +162,7 @@ const logger = createLogger(cfg.logLevel);
 const client = new TelegramUserClient({
   apiId: cfg.apiId,
   apiHash: cfg.apiHash,
-  sessionString: '', // paste stored session here, or run login() first
+  sessionString: '', // paste a stored session, or run login() first
   logger,
   downloadDir: cfg.downloadDir,
   sessionPath: cfg.sessionPath,
@@ -106,15 +177,32 @@ client.on('any', (m) => {
 client.startListening();
 ```
 
-The full public surface is exported from the package root — see `src/index.ts` for the barrel.
+The full public surface is re-exported from the package root — see `src/index.ts` for the barrel.
+
+---
+
+## Development
+
+```bash
+npm run typecheck   # TypeScript type check (no emit)
+npm test            # run tests with Vitest
+npm run coverage    # test coverage report
+npm run lint        # ESLint
+npm run format      # Prettier
+npm run build       # compile to dist/
+```
 
 ---
 
 ## Security notes
 
-- The `StringSession` file stored at `TELEGRAM_SESSION_PATH` is **equivalent to a password**. Anyone with the file can act as you on Telegram.
-  - The library writes the file with mode `0o600` (owner read/write only).
-  - Do NOT commit the session file to version control. The project `.gitignore` already excludes `*.session` / `*.session.txt`.
-  - Encrypting the session at rest (e.g. with a passphrase-derived key or OS keychain integration) is a planned hardening item but is NOT implemented in v1 — see `Issues - Pending Items.md`.
+- The `StringSession` file at `TELEGRAM_SESSION_PATH` is equivalent to a password — anyone with it can act as your Telegram account. The library writes it with mode `0o600` (owner-only). Do not commit it. The project `.gitignore` already excludes `*.session` and `*.session.txt`.
+- `TELEGRAM_BRIDGE_ALLOWED_SENDER_IDS` is your primary access control. The bridge silently drops messages from any sender ID not on the allowlist.
 - Secrets are redacted from every log line: `apiHash`, `sessionString`, `password`, `phoneCode`, `phoneNumber`.
-- The 2FA password is read from stdin only (never from an env var when using the CLI).
+- The 2FA password is read from stdin only when using the CLI — never from an environment variable.
+
+---
+
+## License
+
+[MIT](LICENSE) © 2026 Dimitris Plessas
