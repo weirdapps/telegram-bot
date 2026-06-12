@@ -48,9 +48,10 @@ export async function askClaude(opts: {
         // Plugins resolved at bridge startup (see pluginLoader.ts). Empty array
         // is allowed — SDK then runs with built-in tools only.
         plugins: opts.plugins ?? [],
-        // Mirror CLI behavior: read user + project settings (env, statusLine,
-        // global hooks). Without this the SDK uses zero settings sources.
-        settingSources: ['user', 'project'],
+        // Don't load user/project settings — VPS settings.json has Mac-specific
+        // hooks that break the SDK silently. The bridge manages its own plugins,
+        // permissions, and env vars independently.
+        settingSources: [],
         ...(modelOverride ? { model: modelOverride } : {}),
       },
     });

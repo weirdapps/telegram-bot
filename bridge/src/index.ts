@@ -371,33 +371,28 @@ async function runClaudeTurn( // NOSONAR S3776 - Claude turn orchestration with 
   const s = await rt.state.load();
   // When the input is voice, hint Claude to write conversationally so the
   // spoken reply doesn't sound like a markdown document being read aloud.
-  // The hint is a system-level prefix INSIDE the user-turn prompt — visible
-  // to Claude but does not show on the user's screen as a reply.
   const willSpeak = inputModality === 'voice' && s.voiceMode !== 'off';
   const promptToSend = willSpeak
     ? `[BRIDGE-NOTE: this turn arrived as a Telegram voice note from ${detectedLanguage ?? 'unknown lang'}; the reply will be played aloud via TTS. Write conversationally — no markdown formatting (no asterisks, hashes, pipes, tables, code fences, bullet markers, links, "★ Insight" blocks). Keep the answer naturally short for spoken delivery, ideally under ~150 words. The text channel will mirror the same words, so no need for parallel "voice version" / "text version".]\n\n${prompt}`
     : prompt;
   let result;
   try {
-    // plan-004: retry once on silence-watchdog timeout, with a fresh
-    // (resume=null) subprocess. The first failure clears any stored
-    // sessionId so the second attempt cannot inherit a corrupted resume.
+    // Resume disabled — each Telegram message is a fresh turn. Resume caused
+    // cascading "No conversation found" errors when sessions expired or the
+    // SDK returned empty results from stale sessions.
     result = await withRetryOnTimeout(
-      (resume) =>
+      () =>
         askClaude({
           prompt: promptToSend,
-          resume,
+          resume: null,
           cwd: rt.cwd,
           plugins: rt.plugins,
         }),
-      s.sessionId,
+      null,
       {
         onRetry: async () => {
-          if (s.sessionId !== null) {
-            await rt.state.save({ ...s, sessionId: null });
-          }
           rt.logger.warn(
-            { component: 'bridge', priorSessionId: s.sessionId },
+            { component: 'bridge' },
             'silence watchdog tripped — retrying once with fresh session',
           );
         },
@@ -420,7 +415,43 @@ async function runClaudeTurn( // NOSONAR S3776 - Claude turn orchestration with 
     await out.sendText(chatId, `error: ${message}`);
     return;
   }
-  await persistTurn(rt.state, result.sessionId);
+  // Empty-response guard: if the SDK returned instantly (< 2s) with zero cost
+  // and empty text, the model silently refused (common Opus 4.8 pattern) or the
+  // session was stale. Either way: don't persist this session (it's dead) and
+  // retry once with a fresh session.
+  if (result.costUsd === 0 && result.durationMs < 2000 && (result.text ?? '').trim() === '') {
+    rt.logger.warn(
+      {
+        component: 'bridge',
+        sessionId: result.sessionId,
+        priorSessionId: s.sessionId,
+        durationMs: result.durationMs,
+      },
+      'empty response (0 cost, <2s) — retrying with fresh session',
+    );
+    // Don't persist the dead session; clear any prior one too
+    const cur = await rt.state.load();
+    await rt.state.save({ ...cur, sessionId: null });
+    result = await askClaude({
+      prompt: promptToSend,
+      resume: null,
+      cwd: rt.cwd,
+      plugins: rt.plugins,
+    });
+  }
+
+  // Only persist sessions that produced real output — empty sessions cause
+  // cascading "No conversation found" errors on the next message.
+  if ((result.text ?? '').trim() !== '' || result.costUsd > 0) {
+    await persistTurn(rt.state, result.sessionId);
+  } else {
+    rt.logger.warn(
+      { component: 'bridge', sessionId: result.sessionId },
+      'not persisting session — response still empty after retry',
+    );
+    const cur = await rt.state.load();
+    await rt.state.save({ ...cur, sessionId: null });
+  }
   rt.logger.info(
     {
       component: 'bridge',
