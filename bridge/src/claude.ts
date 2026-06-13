@@ -1,6 +1,7 @@
 import { query, type SDKResultMessage, type SdkPluginConfig } from '@anthropic-ai/claude-agent-sdk';
 import { canUseTool, getPermissionMode } from './permissions.js';
 import { withFallbackOnRefusal } from './claudeFallback.js';
+import { reapOrphanedMcpProcesses } from './mcpReaper.js';
 
 export interface ClaudeResult {
   text: string;
@@ -89,12 +90,17 @@ export async function askClaude(opts: {
   };
 
   // Best-effort: if Opus 4.8 returns a spurious policy refusal, re-run once on Opus 4.6.
-  const result = await withFallbackOnRefusal(runOnce, {
-    onFallback: () =>
-      console.warn(
-        '[bridge] Opus refusal detected — downgrading to Opus 4.6 (europe-west1) fallback',
-      ),
-  });
+  let result: SDKResultMessage;
+  try {
+    result = await withFallbackOnRefusal(runOnce, {
+      onFallback: () =>
+        console.warn(
+          '[bridge] Opus refusal detected — downgrading to Opus 4.6 (europe-west1) fallback',
+        ),
+    });
+  } finally {
+    reapOrphanedMcpProcesses();
+  }
 
   const text =
     result.subtype === 'success'

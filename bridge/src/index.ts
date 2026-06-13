@@ -24,6 +24,7 @@ import {
 import { stripMarkdownForSpeech } from './markdownStrip.js';
 import { loadEnabledPlugins } from './pluginLoader.js';
 import { withRetryOnTimeout } from './claudeRetry.js';
+import { reapAllMcpProcesses } from './mcpReaper.js';
 import type { TextToSpeechClient } from '@google-cloud/text-to-speech';
 import type { SdkPluginConfig } from '@anthropic-ai/claude-agent-sdk';
 import type { Channel, ChannelMessage } from './channels/channel.js';
@@ -208,6 +209,7 @@ async function main(): Promise<void> {
   const shutdown = async (): Promise<void> => {
     logger.info({ component: 'bridge' }, 'shutdown signal received');
     await queue.catch(() => undefined);
+    reapAllMcpProcesses(logger);
     stt.close();
     tts.close();
     for (const ch of channels) await ch.stop();
