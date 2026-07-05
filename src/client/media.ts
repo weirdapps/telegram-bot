@@ -235,7 +235,7 @@ export function buildFilename(message: Api.Message, media: IncomingMedia): strin
 export async function downloadIncomingMedia(
   message: Api.Message,
   downloadDir: string,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+
   _client: TelegramClient,
 ): Promise<string | null> {
   const media = classifyIncoming(message);

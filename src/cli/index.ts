@@ -25,7 +25,6 @@ program.addCommand(sendFileCommand());
 program.addCommand(listenCommand());
 
 program.parseAsync(process.argv).catch((err) => {
-  // eslint-disable-next-line no-console
   console.error(err instanceof Error ? err.message : String(err));
   process.exit(1);
 });

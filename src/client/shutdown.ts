@@ -81,14 +81,12 @@ export function installGracefulShutdown(client: TelegramUserClient, logger: Logg
 
   const sigintHandler = (): void => {
     shutdown('SIGINT').catch((err) => {
-      // eslint-disable-next-line no-console
       console.error('Fatal error during shutdown:', err);
       process.exit(1);
     });
   };
   const sigtermHandler = (): void => {
     shutdown('SIGTERM').catch((err) => {
-      // eslint-disable-next-line no-console
       console.error('Fatal error during shutdown:', err);
       process.exit(1);
     });

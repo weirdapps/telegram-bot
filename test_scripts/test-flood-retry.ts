@@ -18,7 +18,6 @@ import { withFloodRetry } from '../src/client/flood.js';
  */
 function makeFloodWait(seconds: number): FloodWaitError {
   return new FloodWaitError({
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     request: {} as any,
     capture: seconds,
   });
