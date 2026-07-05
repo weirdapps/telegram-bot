@@ -553,7 +553,6 @@ async function safeUnlink(path: string, logger: Logger): Promise<void> {
 }
 
 main().catch((err) => {
-  // eslint-disable-next-line no-console
   console.error('FATAL', err);
   process.exit(1);
 });
