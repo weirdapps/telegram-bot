@@ -3,7 +3,7 @@
  *
  * The bridge's `askClaude()` aborts the SDK stream when it goes silent for
  * SDK_SILENCE_TIMEOUT_MS (300 s). That can happen because:
- *   - an MCP server hangs at startup (second-brain disconnects, workiq stalls)
+ *   - an MCP server hangs at startup (second-brain disconnects)
  *   - the cwd's CLAUDE.md + 10 plugins + global hooks legitimately need >300 s
  *     on a cold cache
  *   - a flaky network blackholes the Vertex call mid-flight

@@ -13,7 +13,7 @@ Concrete impact observed during plan-002 testing:
 
 - `outlook-bridge` MCP (calendar, mail) never loaded → fell back to direct `outlook-cli` shell calls
 - `second-brain` MCP keeps disconnecting (loaded inconsistently)
-- `workiq`, `chrome-devtools`, `figma`, `context7` and others either disconnect or never appear
+- `chrome-devtools`, `figma`, `context7` and others either disconnect or never appear
 - Skills like `meeting-prep:meeting-prep`, `email-handler:mail-review`, `trading-hub:briefing` are unavailable
 - Slash commands shipped by plugins (e.g. `/portfolio`, `/morning`, `/triage-inbox`) are unavailable
 
@@ -32,7 +32,7 @@ Plugins shipping MCP servers (auto-loaded when plugin is loaded):
 
 - discord, figma, imessage, microsoft-docs, semgrep, supabase, vercel (from claude-plugins-official)
 - outlook-bridge, second-brain (from communications-marketplace and second-brain repo)
-- chrome-devtools, playwright, news-reader, workiq
+- chrome-devtools, playwright, news-reader
 
 Plugins shipping hooks:
 
