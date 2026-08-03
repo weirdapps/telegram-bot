@@ -31,9 +31,11 @@ export async function askClaude(opts: {
 }): Promise<ClaudeResult> {
   const mode = getPermissionMode();
 
-  // One agentic turn. `modelOverride` (null = default ANTHROPIC_MODEL = Opus 4.8 @ eu)
-  // lets the refusal-fallback re-run the turn on Opus 4.6 — which the bridge .env routes
-  // to europe-west1 via VERTEX_REGION_CLAUDE_4_6_OPUS — without touching process env.
+  // One agentic turn. `modelOverride` (null = default ANTHROPIC_MODEL = Opus 5 @ eu)
+  // lets the refusal-fallback re-run the turn on VERTEX_MODEL_FALLBACK, routed to
+  // VERTEX_REGION_FALLBACK, without touching process env. Since 2026-08-03 that
+  // fallback is also Opus 5 @ eu, so the retry absorbs transient errors rather than
+  // escaping a refusal — see claudeFallback.ts and the README's model-pinning section.
   const runOnce = async (modelOverride: string | null): Promise<SDKResultMessage> => {
     const abortController = new AbortController();
     const stream = query({
@@ -89,13 +91,17 @@ export async function askClaude(opts: {
     return result;
   };
 
-  // Best-effort: if Opus 4.8 returns a spurious policy refusal, re-run once on Opus 4.6.
+  // Best-effort: on a spurious policy refusal, re-run once on the VERTEX_MODEL_FALLBACK
+  // tier. Since 2026-08-03 that tier is Opus 5 @ eu — the same model as the primary — so
+  // this is a transient-error retry, not a model-class downgrade.
   let result: SDKResultMessage;
   try {
     result = await withFallbackOnRefusal(runOnce, {
       onFallback: () =>
         console.warn(
-          '[bridge] Opus refusal detected — downgrading to Opus 4.6 (europe-west1) fallback',
+          `[bridge] Opus refusal detected — retrying on fallback tier ${
+            process.env.VERTEX_MODEL_FALLBACK ?? 'claude-opus-5[1m]'
+          } (${process.env.VERTEX_REGION_FALLBACK ?? 'eu'})`,
         ),
     });
   } finally {

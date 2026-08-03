@@ -1,11 +1,10 @@
 import type { SDKResultMessage } from '@anthropic-ai/claude-agent-sdk';
 
-// Best-effort auto-downgrade when Opus 4.7/4.8 raise a spurious "anthropic policy"
-// refusal. The agentic SDK does NOT expose `stop_reason` on the terminal result
-// message, so — unlike the CLI/SDK single-completion paths — we can only detect a
-// refusal heuristically from the result TEXT. Detection is intentionally conservative;
-// a false positive costs one extra query on the (cheaper, equally-capable for benign
-// work) Opus 4.6 fallback, which returns the same answer anyway.
+// Best-effort retry when the model raises a spurious "anthropic policy" refusal.
+// The agentic SDK does NOT expose `stop_reason` on the terminal result message, so —
+// unlike the CLI/SDK single-completion paths — we can only detect a refusal
+// heuristically from the result TEXT. Detection is intentionally conservative; a false
+// positive costs one extra query on the fallback tier, which returns the same answer.
 //
 // Mirrors claudeRetry.ts: the SDK call comes in as an injected `attempt` callback so
 // this stays a pure, unit-testable wrapper with no SDK mocking required.
@@ -64,12 +63,12 @@ export async function withFallbackOnRefusal(
   if (!isLikelyPolicyRefusal(first)) return first;
 
   const fallbackModel =
-    opts?.fallbackModel ?? process.env.VERTEX_MODEL_FALLBACK ?? 'claude-opus-4-6[1m]';
-  const fallbackRegion =
-    opts?.fallbackRegion ?? process.env.VERTEX_REGION_CLAUDE_4_6_OPUS ?? 'europe-west1';
+    opts?.fallbackModel ?? process.env.VERTEX_MODEL_FALLBACK ?? 'claude-opus-5[1m]';
+  const fallbackRegion = opts?.fallbackRegion ?? process.env.VERTEX_REGION_FALLBACK ?? 'eu';
   if (opts?.onFallback) await opts.onFallback(first);
 
-  // Opus 4.6 requires europe-west1; swap CLOUD_ML_REGION for the fallback call.
+  // Region is a function of model version (>=4.7 -> eu, <=4.6 -> europe-west1) and must
+  // move with the model, so swap CLOUD_ML_REGION for the duration of the fallback call.
   const originalRegion = process.env.CLOUD_ML_REGION;
   process.env.CLOUD_ML_REGION = fallbackRegion;
   try {

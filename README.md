@@ -22,8 +22,8 @@ This fork adds the `bridge/` directory and related plumbing:
   MTProto user client entirely.
 - Voice pipeline: Google Cloud Speech-to-Text for inbound voice notes, Google Cloud Text-to-Speech
   for spoken replies, with markdown stripped before synthesis.
-- Vertex AI model pinning per `.env`, with best-effort auto-downgrade from Opus 4.8 to Opus 4.6
-  (and matching region flip) on spurious "anthropic usage policy" refusals.
+- Vertex AI model pinning per `.env`, with a best-effort auto-retry on a configurable fallback
+  model (and matching region flip) on spurious "anthropic usage policy" refusals.
 - Sender allowlist, atomic session persistence, silence-based SDK watchdog, retry-on-timeout, and
   orphaned MCP subprocess reaping.
 - Deployment recipes for macOS LaunchAgent and Linux systemd.
@@ -86,27 +86,28 @@ cp .env.example .env
 
 Core `.env` variables (see `.env.example` for the full list):
 
-| Variable                                 | Required for      | Notes                                                        |
-| ---------------------------------------- | ----------------- | ------------------------------------------------------------ |
-| `TELEGRAM_API_ID`                        | MTProto channel   | Integer from my.telegram.org.                                |
-| `TELEGRAM_API_HASH`                      | MTProto channel   | 32-char hex from my.telegram.org. Treat as secret.           |
-| `TELEGRAM_PHONE_NUMBER`                  | MTProto channel   | International format, leading `+`.                           |
-| `TELEGRAM_SESSION_PATH`                  | MTProto channel   | Absolute path for the persisted `StringSession`.             |
-| `TELEGRAM_DOWNLOAD_DIR`                  | Both              | Where inbound photo, voice, or audio attachments are saved.  |
-| `TELEGRAM_LOG_LEVEL`                     | Optional          | `trace` / `debug` / `info` (default) / `warn` / `error`.     |
-| `TELEGRAM_BOT_TOKEN`                     | Bot API channel   | From @BotFather.                                             |
-| `TELEGRAM_BRIDGE_BOT_TMPDIR`             | Optional          | Overrides default `$HOME/.telegram/bot-inbox`.               |
-| `TELEGRAM_BRIDGE_DISABLE_SAVED_MESSAGES` | Optional          | Set to `true` for bot-only mode (no MTProto login).          |
-| `TELEGRAM_BRIDGE_ALLOWED_SENDER_IDS`     | Bridge            | Comma-separated numeric Telegram user IDs.                   |
-| `TELEGRAM_BRIDGE_STATE_PATH`             | Optional          | Session-ID persistence path (defaults under `$HOME`).        |
-| `TELEGRAM_BRIDGE_CWD`                    | Optional          | Working directory for the Claude subprocess.                 |
-| `GOOGLE_CLOUD_PROJECT`                   | Voice             | GCP project ID.                                              |
-| `GOOGLE_APPLICATION_CREDENTIALS`         | Voice             | Absolute path to the service account key JSON.               |
-| `CLAUDE_CODE_USE_VERTEX`                 | Vertex            | Set to `1` to route the Agent SDK through Vertex AI.         |
-| `ANTHROPIC_VERTEX_PROJECT_ID`            | Vertex            | GCP project hosting the Anthropic Vertex offering.           |
-| `CLOUD_ML_REGION`                        | Vertex            | Region for the pinned `ANTHROPIC_MODEL`.                     |
-| `ANTHROPIC_MODEL`                        | Vertex            | Pinned model, e.g. `claude-opus-4-8[1m]` (see next section). |
-| `VERTEX_REGION_CLAUDE_4_6_OPUS`          | Optional (Vertex) | Region for the Opus 4.6 fallback (default `europe-west1`).   |
+| Variable                                 | Required for      | Notes                                                       |
+| ---------------------------------------- | ----------------- | ----------------------------------------------------------- |
+| `TELEGRAM_API_ID`                        | MTProto channel   | Integer from my.telegram.org.                               |
+| `TELEGRAM_API_HASH`                      | MTProto channel   | 32-char hex from my.telegram.org. Treat as secret.          |
+| `TELEGRAM_PHONE_NUMBER`                  | MTProto channel   | International format, leading `+`.                          |
+| `TELEGRAM_SESSION_PATH`                  | MTProto channel   | Absolute path for the persisted `StringSession`.            |
+| `TELEGRAM_DOWNLOAD_DIR`                  | Both              | Where inbound photo, voice, or audio attachments are saved. |
+| `TELEGRAM_LOG_LEVEL`                     | Optional          | `trace` / `debug` / `info` (default) / `warn` / `error`.    |
+| `TELEGRAM_BOT_TOKEN`                     | Bot API channel   | From @BotFather.                                            |
+| `TELEGRAM_BRIDGE_BOT_TMPDIR`             | Optional          | Overrides default `$HOME/.telegram/bot-inbox`.              |
+| `TELEGRAM_BRIDGE_DISABLE_SAVED_MESSAGES` | Optional          | Set to `true` for bot-only mode (no MTProto login).         |
+| `TELEGRAM_BRIDGE_ALLOWED_SENDER_IDS`     | Bridge            | Comma-separated numeric Telegram user IDs.                  |
+| `TELEGRAM_BRIDGE_STATE_PATH`             | Optional          | Session-ID persistence path (defaults under `$HOME`).       |
+| `TELEGRAM_BRIDGE_CWD`                    | Optional          | Working directory for the Claude subprocess.                |
+| `GOOGLE_CLOUD_PROJECT`                   | Voice             | GCP project ID.                                             |
+| `GOOGLE_APPLICATION_CREDENTIALS`         | Voice             | Absolute path to the service account key JSON.              |
+| `CLAUDE_CODE_USE_VERTEX`                 | Vertex            | Set to `1` to route the Agent SDK through Vertex AI.        |
+| `ANTHROPIC_VERTEX_PROJECT_ID`            | Vertex            | GCP project hosting the Anthropic Vertex offering.          |
+| `CLOUD_ML_REGION`                        | Vertex            | Region for the pinned `ANTHROPIC_MODEL`.                    |
+| `ANTHROPIC_MODEL`                        | Vertex            | Pinned model, e.g. `claude-opus-5[1m]` (see next section).  |
+| `VERTEX_MODEL_FALLBACK`                  | Optional (Vertex) | Refusal-retry model (default `claude-opus-5[1m]`).          |
+| `VERTEX_REGION_FALLBACK`                 | Optional (Vertex) | Region for that fallback model (default `eu`).              |
 
 ### 2. Log in (MTProto channel only)
 
@@ -140,9 +141,14 @@ Region pairing is strict:
 - Models `>= 4.7` must run in region `eu`.
 - Models `<= 4.6` must run in region `europe-west1`.
 
-The auto-fallback in `bridge/src/claudeFallback.ts` uses `VERTEX_REGION_CLAUDE_4_6_OPUS` (default
-`europe-west1`) to route the retry, so `CLOUD_ML_REGION=eu` for the primary model can stay
-unchanged.
+The auto-fallback in `bridge/src/claudeFallback.ts` therefore swaps `CLOUD_ML_REGION` for the
+duration of the retry: it reads `VERTEX_MODEL_FALLBACK` (default `claude-opus-5[1m]`) together with
+`VERTEX_REGION_FALLBACK` (default `eu`). Change those two as a pair — a fallback model routed to
+the wrong region is exactly the `429` this section warns about.
+
+As of 2026-08-03 the fallback is the _same_ model as the primary (Opus 5), so the retry absorbs
+transient errors but is no longer a model-class escape hatch from a refusal. To restore one, set
+`VERTEX_MODEL_FALLBACK=claude-opus-4-6[1m]` and `VERTEX_REGION_FALLBACK=europe-west1`.
 
 ## Slash commands
 
