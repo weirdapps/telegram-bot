@@ -26,9 +26,10 @@ This fork adds the `bridge/` directory and related plumbing:
   model (and matching region flip) on spurious "anthropic usage policy" refusals.
 - Sender allowlist, atomic session persistence, silence-based SDK watchdog, retry-on-timeout, and
   orphaned MCP subprocess reaping.
-- Deployment recipes for macOS LaunchAgent and Linux systemd.
+- A macOS LaunchAgent deployment recipe (plist template plus a launcher script).
 - CI and security hardening: CodeQL, SonarCloud, ESLint flat-config, Vitest, pre-commit hooks
-  (gitleaks, prettier, markdownlint), pinned action SHAs, and Dependabot with grouped auto-merge.
+  (gitleaks, prettier, markdownlint), SHA-pinned actions in `ci.yml`, and grouped Dependabot
+  updates auto-merged by a reusable workflow in `weirdapps/shared-workflows`.
 
 ## How it works
 
@@ -50,8 +51,8 @@ Telegram (text or voice note)
   Telegram reply (text and optional voice note)
 ```
 
-Voice replies mirror the language Claude detects in the transcript (Greek or English). Markdown is
-stripped before TTS so asterisks and hashes are never read aloud.
+Voice replies mirror the language Google Speech-to-Text reports for the transcript (Greek or
+English). Markdown is stripped before TTS so asterisks and hashes are never read aloud.
 
 ## Prerequisites
 
@@ -59,8 +60,10 @@ stripped before TTS so asterisks and hashes are never read aloud.
 - Telegram `api_id` and `api_hash` from <https://my.telegram.org> (required for the MTProto
   Saved Messages channel).
 - Telegram Bot Token from [@BotFather](https://t.me/BotFather) (required for the Bot API channel).
-- A Google Cloud project with the Speech-to-Text and Text-to-Speech APIs enabled, and a service
-  account key file (voice pipeline).
+- A Google Cloud project with the Speech-to-Text and Text-to-Speech APIs enabled, plus a service
+  account key file. The bridge loads its voice configuration unconditionally at startup, so the
+  seven voice variables are mandatory even if you only ever send text.
+  `docs/design/voice-bridge-setup.md` walks through the Google Cloud side.
 - Claude Code installed and configured (`claude --version` must resolve). The bridge invokes it
   via the Claude Agent SDK, which shells out to the local `claude` binary.
 
@@ -84,30 +87,50 @@ cp .env.example .env
 # Edit .env and set the required vars listed below
 ```
 
-Core `.env` variables (see `.env.example` for the full list):
+Core `.env` variables (`.env.example` carries the same set as commented placeholders):
 
-| Variable                                 | Required for      | Notes                                                       |
-| ---------------------------------------- | ----------------- | ----------------------------------------------------------- |
-| `TELEGRAM_API_ID`                        | MTProto channel   | Integer from my.telegram.org.                               |
-| `TELEGRAM_API_HASH`                      | MTProto channel   | 32-char hex from my.telegram.org. Treat as secret.          |
-| `TELEGRAM_PHONE_NUMBER`                  | MTProto channel   | International format, leading `+`.                          |
-| `TELEGRAM_SESSION_PATH`                  | MTProto channel   | Absolute path for the persisted `StringSession`.            |
-| `TELEGRAM_DOWNLOAD_DIR`                  | Both              | Where inbound photo, voice, or audio attachments are saved. |
-| `TELEGRAM_LOG_LEVEL`                     | Optional          | `trace` / `debug` / `info` (default) / `warn` / `error`.    |
-| `TELEGRAM_BOT_TOKEN`                     | Bot API channel   | From @BotFather.                                            |
-| `TELEGRAM_BRIDGE_BOT_TMPDIR`             | Optional          | Overrides default `$HOME/.telegram/bot-inbox`.              |
-| `TELEGRAM_BRIDGE_DISABLE_SAVED_MESSAGES` | Optional          | Set to `true` for bot-only mode (no MTProto login).         |
-| `TELEGRAM_BRIDGE_ALLOWED_SENDER_IDS`     | Bridge            | Comma-separated numeric Telegram user IDs.                  |
-| `TELEGRAM_BRIDGE_STATE_PATH`             | Optional          | Session-ID persistence path (defaults under `$HOME`).       |
-| `TELEGRAM_BRIDGE_CWD`                    | Optional          | Working directory for the Claude subprocess.                |
-| `GOOGLE_CLOUD_PROJECT`                   | Voice             | GCP project ID.                                             |
-| `GOOGLE_APPLICATION_CREDENTIALS`         | Voice             | Absolute path to the service account key JSON.              |
-| `CLAUDE_CODE_USE_VERTEX`                 | Vertex            | Set to `1` to route the Agent SDK through Vertex AI.        |
-| `ANTHROPIC_VERTEX_PROJECT_ID`            | Vertex            | GCP project hosting the Anthropic Vertex offering.          |
-| `CLOUD_ML_REGION`                        | Vertex            | Region for the pinned `ANTHROPIC_MODEL`.                    |
-| `ANTHROPIC_MODEL`                        | Vertex            | Pinned model, e.g. `claude-opus-5[1m]` (see next section).  |
-| `VERTEX_MODEL_FALLBACK`                  | Optional (Vertex) | Refusal-retry model (default `claude-opus-5[1m]`).          |
-| `VERTEX_REGION_FALLBACK`                 | Optional (Vertex) | Region for that fallback model (default `eu`).              |
+| Variable                                 | Required for      | Notes                                                                                                                                                                   |
+| ---------------------------------------- | ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `TELEGRAM_API_ID`                        | MTProto channel   | Integer from my.telegram.org.                                                                                                                                           |
+| `TELEGRAM_API_HASH`                      | MTProto channel   | 32-char hex from my.telegram.org. Treat as secret.                                                                                                                      |
+| `TELEGRAM_PHONE_NUMBER`                  | MTProto channel   | International format, leading `+`.                                                                                                                                      |
+| `TELEGRAM_SESSION_PATH`                  | MTProto channel   | Absolute path for the persisted `StringSession`.                                                                                                                        |
+| `TELEGRAM_DOWNLOAD_DIR`                  | Both              | Where inbound photo, voice, or audio attachments are saved.                                                                                                             |
+| `TELEGRAM_LOG_LEVEL`                     | Both              | One of `trace` / `debug` / `info` / `warn` / `error` / `silent`. Required, with no default.                                                                             |
+| `TELEGRAM_BOT_TOKEN`                     | Bot API channel   | From @BotFather.                                                                                                                                                        |
+| `TELEGRAM_BRIDGE_BOT_TMPDIR`             | Optional          | Overrides default `$HOME/.telegram/bot-inbox`.                                                                                                                          |
+| `TELEGRAM_BRIDGE_DISABLE_SAVED_MESSAGES` | Optional          | Set to `true` for bot-only mode (no MTProto login).                                                                                                                     |
+| `TELEGRAM_BRIDGE_ALLOWED_SENDER_IDS`     | Bridge            | Comma-separated numeric Telegram user IDs. The bridge refuses to start without it: there is no implicit "allow everyone".                                               |
+| `TELEGRAM_BRIDGE_STATE_PATH`             | Optional          | Session-ID persistence path (defaults under `$HOME`).                                                                                                                   |
+| `TELEGRAM_BRIDGE_CWD`                    | Optional          | Working directory for the Claude subprocess.                                                                                                                            |
+| `GOOGLE_CLOUD_PROJECT`                   | Bridge (voice)    | GCP project billed for Speech-to-Text and Text-to-Speech.                                                                                                               |
+| `VOICE_BRIDGE_GCP_KEY_PATH`              | Bridge (voice)    | Path to the GCP service account key JSON. Deliberately NOT `GOOGLE_APPLICATION_CREDENTIALS`: the Anthropic Vertex SDK reads that name too and would hijack Claude auth. |
+| `VOICE_BRIDGE_TTS_VOICE_EL`              | Bridge (voice)    | Greek TTS voice name, e.g. `el-GR-Chirp3-HD-Aoede`.                                                                                                                     |
+| `VOICE_BRIDGE_TTS_VOICE_EN`              | Bridge (voice)    | English TTS voice name, e.g. `en-US-Chirp3-HD-Aoede`.                                                                                                                   |
+| `VOICE_BRIDGE_MAX_AUDIO_SECONDS`         | Bridge (voice)    | Positive integer. Longer replies go out as full text plus a truncated voice note.                                                                                       |
+| `VOICE_BRIDGE_REJECT_ABOVE_SECONDS`      | Bridge (voice)    | Positive integer. Inbound voice notes above this are refused.                                                                                                           |
+| `VOICE_BRIDGE_KEEP_AUDIO_FILES`          | Bridge (voice)    | `true`/`false`/`1`/`0`/`yes`/`no`. Keeps inbound and synthesised audio on disk.                                                                                         |
+| `CLAUDE_CODE_USE_VERTEX`                 | Vertex            | Set to `1` to route the Agent SDK through Vertex AI.                                                                                                                    |
+| `ANTHROPIC_VERTEX_PROJECT_ID`            | Vertex            | GCP project hosting the Anthropic Vertex offering.                                                                                                                      |
+| `CLOUD_ML_REGION`                        | Vertex            | Region for the pinned `ANTHROPIC_MODEL`.                                                                                                                                |
+| `ANTHROPIC_MODEL`                        | Vertex            | Pinned model, e.g. `claude-opus-5[1m]` (see next section).                                                                                                              |
+| `VERTEX_MODEL_FALLBACK`                  | Optional (Vertex) | Refusal-retry model (default `claude-opus-5[1m]`).                                                                                                                      |
+| `VERTEX_REGION_FALLBACK`                 | Optional (Vertex) | Region for that fallback model (default `eu`).                                                                                                                          |
+| `BRIDGE_PLUGIN_ALLOWLIST`                | Optional          | Comma-separated `name@marketplace` keys. When set, only these enabled plugins load.                                                                                     |
+| `BRIDGE_PLUGIN_DENYLIST`                 | Optional          | Comma-separated `name@marketplace` keys to skip. Evaluated after the allowlist.                                                                                         |
+
+`loadConfig()` runs first and unconditionally requires all six `MTProto channel` / `Both` rows, so
+even bot-only mode (`TELEGRAM_BRIDGE_DISABLE_SAVED_MESSAGES=true`) needs `TELEGRAM_API_ID`,
+`TELEGRAM_API_HASH`, `TELEGRAM_PHONE_NUMBER`, and `TELEGRAM_SESSION_PATH` present in `.env`. What
+bot-only mode skips is the MTProto login and connection, not the config check.
+
+The seven `Bridge (voice)` rows are read by `loadVoiceBridgeConfig()` before any channel starts,
+and each one throws `VoiceBridgeConfigError` when unset. There is no degraded text-only mode:
+`npm run bridge` will not come up until all seven are present.
+
+With `BRIDGE_PLUGIN_ALLOWLIST` unset, the bridge loads **every** plugin marked enabled in
+`~/.claude/settings.json` (see `bridge/src/pluginLoader.ts`), so the Telegram surface inherits your
+whole local plugin and MCP-server set. Set the allowlist to narrow that down.
 
 ### 2. Log in (MTProto channel only)
 
@@ -127,7 +150,8 @@ npm run bridge
 The bridge starts every configured channel and blocks. Send a message to your Telegram Saved
 Messages (MTProto) or to the bot (Bot API), and Claude replies. Foreground use is fine for a
 laptop; `bridge/README.md` documents both a macOS LaunchAgent (`launchd`) install and the
-CloudStorage TCC workaround. The production deployment on the VPS uses a systemd service.
+CloudStorage TCC workaround. The maintainer's Linux deployment runs the same `npm run bridge`
+command under systemd, but no unit file or systemd recipe ships in this repo.
 
 ## Vertex model pinning (gotcha)
 
@@ -154,12 +178,17 @@ transient errors but is no longer a model-class escape hatch from a refusal. To 
 
 The bridge intercepts a small set of commands and handles them inline (no round-trip to Claude):
 
-| Command                        | Description                                                   |
-| ------------------------------ | ------------------------------------------------------------- |
-| `/clear`                       | Reset the Claude session. Next message starts a fresh thread. |
-| `/status`                      | Show current session ID, last activity, voice mode.           |
-| `/voice [mirror\|always\|off]` | Change voice-reply behaviour.                                 |
-| `/help`                        | List available commands.                                      |
+| Command                        | Description                                              |
+| ------------------------------ | -------------------------------------------------------- |
+| `/clear`                       | Clear the stored session ID and last-activity timestamp. |
+| `/status`                      | Show current session ID, last activity, voice mode.      |
+| `/voice [mirror\|always\|off]` | Change voice-reply behaviour.                            |
+| `/help`                        | List available commands.                                 |
+
+Note that every Telegram message is already an independent Claude turn: `runClaudeTurn()` passes
+`resume: null`, so no conversation context carries over between messages. Session resume was
+removed because expired sessions produced cascading "No conversation found" errors. The bridge
+still records the last session ID for `/status`, and `/clear` wipes that record.
 
 Voice modes:
 
@@ -232,19 +261,26 @@ npm run build       # tsc + chmod +x dist/src/cli/index.js
 ```
 
 CI runs `typecheck`, `lint`, `build`, and `test` on every push and PR to `master`
-(`.github/workflows/ci.yml`). CodeQL, SonarCloud, Dependabot auto-merge, and a monthly grouped
-dependency-refresh workflow live alongside it.
+(`.github/workflows/ci.yml`). CodeQL and SonarCloud run alongside it. Dependabot auto-merge
+(`dependabot-auto-merge.yml`) and the monthly grouped dependency refresh (`deps-refresh.yml`) are
+thin callers of reusable workflows in `weirdapps/shared-workflows`, so their logic is not in this
+repo.
 
 ## Security notes
 
 - `TELEGRAM_SESSION_PATH` holds a `StringSession` that is equivalent to a password: anyone with
   the file can act as your Telegram account. Written with mode `0600`; `.gitignore` excludes
   `*.session` and `*.session.txt`.
-- `TELEGRAM_BRIDGE_ALLOWED_SENDER_IDS` is the primary access control. The bridge silently drops
+- `TELEGRAM_BRIDGE_ALLOWED_SENDER_IDS` is the primary access control. The bridge drops (and logs)
   messages from any sender ID outside the allowlist.
+- The bridge runs the Agent SDK in `bypassPermissions` mode by default (`bridge/src/permissions.ts`),
+  so an allowlisted sender gets ungated tool execution across every loaded plugin and MCP server.
+  Switch `getPermissionMode()` to `'default'` to gate each call through `canUseTool()`.
 - Secrets are redacted from every log line (`apiHash`, `sessionString`, `password`, `phoneCode`,
   `phoneNumber`).
-- The 2FA password is read from stdin only when using the CLI, never from an environment variable.
+- The 2FA password is prompted for on stdin unless `TELEGRAM_2FA_PASSWORD` is set, in which case
+  `telegram-cli login` uses that value (`src/cli/commands/login.ts`). Leave it unset unless you
+  need unattended login.
 - See `SECURITY.md` for the vulnerability disclosure process.
 
 ## License

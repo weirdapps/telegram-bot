@@ -5,8 +5,10 @@
 // the sync API; the bridge enforces a higher cap upstream and rejects
 // anything longer before calling here).
 //
-// Auth: GOOGLE_APPLICATION_CREDENTIALS pointing at a service-account JSON
-// with roles/speech.client (recognize permission) on GOOGLE_CLOUD_PROJECT.
+// Auth: VOICE_BRIDGE_GCP_KEY_PATH pointing at a service-account JSON with
+// roles/speech.client (recognize permission) on GOOGLE_CLOUD_PROJECT. The path
+// is passed to createSpeechClient() as keyFilename, never exported as
+// GOOGLE_APPLICATION_CREDENTIALS (see the note on createSpeechClient below).
 //
 // Model + location: 'long' in 'eu' multi-region. The original design used
 // chirp_2, but chirp_2 is only available in single-region endpoints
