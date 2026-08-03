@@ -15,8 +15,8 @@ This file tracks outstanding defects, inconsistencies, and deferred hardening wo
 
 ### High
 
-2. **No unattended re-login on 2FA-protected accounts (OOS-14 / ADR-006).**
-   The CLI does not honour `TELEGRAM_2FA_PASSWORD`; it prompts via stdin. Headless re-authentication is therefore not possible when 2FA is enabled. `AppConfig.twoFaPassword` remains on the interface for programmatic consumers that bypass the CLI.
+2. **Unattended 2FA login requires the password in a file (OOS-14 / ADR-006).**
+   RESOLVED as originally written: `src/cli/commands/login.ts` now returns `config.twoFaPassword` from its `LoginCallbacks.password` handler and only falls back to the stdin prompt when `TELEGRAM_2FA_PASSWORD` is unset, so headless re-authentication does work. What remains open is the storage question: the only supported unattended path puts the 2FA password in `.env` (or the process environment) in plaintext. A secret-manager lookup would be the real fix.
 
 3. **Single-account only.**
    One `TELEGRAM_PHONE_NUMBER` per process. Multiple concurrent Telegram identities in the same process are explicitly out of scope for v1.

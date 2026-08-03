@@ -25,6 +25,10 @@ A TypeScript library + thin CLI that logs into Telegram **as your real user acco
 Bot API mode · groups or channels · secret (E2E) chats · outgoing voice/audio/video · multi-account · editing / deleting / reactions / polls · GUI.
 See **Issues - Pending Items.md** for the full deferred-features list.
 
+> Scope note: "Bot API mode" is unsupported in the `telegram-cli` / library surface this guide
+> covers. The Claude bridge (`npm run bridge`) does ship a separate Bot API input channel, gated on
+> `TELEGRAM_BOT_TOKEN`. See `README.md` and `bridge/README.md`.
+
 ---
 
 ## 2. Prerequisites
@@ -117,7 +121,7 @@ This removes the global symlink; the local project is unaffected.
 
 ```bash
 npm run typecheck            # must exit 0
-npm test                     # 96 passed / 3 skipped (live integration gated)
+npm test                     # must exit 0; 3 live-integration tests are skipped by default
 telegram-cli --help          # (after §3.3) — or: npm run cli -- --help
 ```
 
@@ -159,21 +163,21 @@ Per project policy (`CLAUDE.md` structure-and-conventions):
 
 This is intentional: silent defaults for secrets or destination paths create confusing failure modes. Every required variable must be set explicitly, every time.
 
-The optional `TELEGRAM_2FA_PASSWORD` is the only exception — it may be unset, and its absence has a defined meaning (library consumers will be prompted; the CLI always prompts regardless).
+The optional `TELEGRAM_2FA_PASSWORD` is the only exception: it may be unset, and its absence has a defined meaning. Both the CLI and library consumers fall back to an interactive prompt when it is not set.
 
 ### 4.4 Configuration variables
 
 All variables are read via `loadConfig()` in `src/config/config.ts`. The table below is normative.
 
-|   # | Variable                |  Required   | Type                     | Purpose                                                                                                                                 |
-| --: | ----------------------- | :---------: | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
-|   1 | `TELEGRAM_API_ID`       |     ✅      | positive integer         | MTProto application ID. Identifies your Telegram application to the network.                                                            |
-|   2 | `TELEGRAM_API_HASH`     |     ✅      | 32-char hex string       | MTProto application hash. **Secret.** Paired with the `api_id`.                                                                         |
-|   3 | `TELEGRAM_PHONE_NUMBER` |     ✅      | E.164 with leading `+`   | The phone number of the Telegram account the client will act as.                                                                        |
-|   4 | `TELEGRAM_SESSION_PATH` |     ✅      | absolute filesystem path | Where the serialized `StringSession` is persisted after the first login.                                                                |
-|   5 | `TELEGRAM_DOWNLOAD_DIR` |     ✅      | absolute directory path  | Where incoming photo / voice / audio attachments are saved. Auto-created if missing.                                                    |
-|   6 | `TELEGRAM_LOG_LEVEL`    |     ✅      | enum                     | pino log level. One of `trace`, `debug`, `info`, `warn`, `error`, `silent`.                                                             |
-|   7 | `TELEGRAM_2FA_PASSWORD` | ⭕ optional | string                   | Cloud 2FA password. When set, library consumers can avoid interactive prompts. The CLI does NOT consult this in v1 — it always prompts. |
+|   # | Variable                |  Required   | Type                     | Purpose                                                                                                                                                               |
+| --: | ----------------------- | :---------: | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+|   1 | `TELEGRAM_API_ID`       |     ✅      | positive integer         | MTProto application ID. Identifies your Telegram application to the network.                                                                                          |
+|   2 | `TELEGRAM_API_HASH`     |     ✅      | 32-char hex string       | MTProto application hash. **Secret.** Paired with the `api_id`.                                                                                                       |
+|   3 | `TELEGRAM_PHONE_NUMBER` |     ✅      | E.164 with leading `+`   | The phone number of the Telegram account the client will act as.                                                                                                      |
+|   4 | `TELEGRAM_SESSION_PATH` |     ✅      | absolute filesystem path | Where the serialized `StringSession` is persisted after the first login.                                                                                              |
+|   5 | `TELEGRAM_DOWNLOAD_DIR` |     ✅      | absolute directory path  | Where incoming photo / voice / audio attachments are saved. Auto-created if missing.                                                                                  |
+|   6 | `TELEGRAM_LOG_LEVEL`    |     ✅      | enum                     | pino log level. One of `trace`, `debug`, `info`, `warn`, `error`, `silent`.                                                                                           |
+|   7 | `TELEGRAM_2FA_PASSWORD` | ⭕ optional | string                   | Cloud 2FA password. When set, `telegram-cli login` uses it instead of prompting; library consumers can pass `cfg.twoFaPassword` through to `LoginCallbacks.password`. |
 
 ---
 
@@ -257,7 +261,7 @@ All variables are read via `loadConfig()` in `src/config/config.ts`. The table b
 - **How to obtain**: it is whatever password you set in Telegram _Settings → Privacy and Security → Two-Step Verification_.
 - **Valid values**: any string. If unset or empty, treated as absent.
 - **Default**: absent (i.e. `config.twoFaPassword === undefined`).
-- **CLI behaviour (v1)**: the CLI always prompts for 2FA at login time and **ignores this variable**. Issue #2 in `Issues - Pending Items.md` tracks enabling unattended 2FA login.
+- **CLI behaviour**: `telegram-cli login` reads this variable. Its `LoginCallbacks.password` handler returns `config.twoFaPassword` when set and only falls back to the masked interactive prompt when it is empty (`src/cli/commands/login.ts`). Setting it therefore does enable unattended 2FA login, and it does put your 2FA password in a file: prefer leaving it unset unless you need that.
 - **Library behaviour**: consumers may read `cfg.twoFaPassword` and pass it into `LoginCallbacks.password` to bypass interactive prompting.
 - **Recommended storage**: secret manager (macOS Keychain, Azure Key Vault, 1Password CLI). **Do not** put it in a committed `.env`. If you must store it in `.env`, keep the file at `chmod 600` and on an encrypted volume.
 - **Expiration**: does not auto-expire. See §6.3 for rotation guidance.
@@ -473,23 +477,27 @@ If you only want to stop using the CLI temporarily without revoking the session,
 
 These vars are required only when running the bridge with voice support enabled (i.e. `npm run bridge`). The library/CLI surface (`telegram-cli`) does not consume them. All seven throw `VoiceBridgeConfigError` (named after the offending variable) if missing — there are no defaults, per project rule "no fallback for configuration".
 
-| Variable                            | Purpose                                                                                                                                                                                                                        | How to obtain                                                                                                                                                                                   | Example                                                 |
-| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- | --- | --- | ---- | ------------------------------------------------- | ------- |
-| `GOOGLE_APPLICATION_CREDENTIALS`    | Path to ADC JSON file. The Google Cloud SDKs auto-load this.                                                                                                                                                                   | `gcloud auth application-default login --account=<personal-gmail>` writes it to `~/.config/gcloud/application_default_credentials.json`. **Renew every ~7 days** — see "Expiry tracking" below. | `~/.config/gcloud/application_default_credentials.json` |
-| `GOOGLE_CLOUD_PROJECT`              | GCP project to bill for Speech v2 + TTS calls. The ADC account must have `serviceusage.services.use` on this project.                                                                                                          | `gcloud projects list` while logged into the personal account.                                                                                                                                  | `__YOUR_GCP_PROJECT__`                                  |
-| `VOICE_BRIDGE_TTS_VOICE_EL`         | TTS voice name for Greek replies.                                                                                                                                                                                              | List with `gcloud --project=<PROJECT> ml language list-voices --filter="languageCodes=el-GR"`. Pick a `Chirp3-HD` variant for best quality.                                                     | `el-GR-Chirp3-HD-Aoede`                                 |
-| `VOICE_BRIDGE_TTS_VOICE_EN`         | TTS voice name for English replies.                                                                                                                                                                                            | Same as above, filter on `en-US`.                                                                                                                                                               | `en-US-Chirp3-HD-Aoede`                                 |
-| `VOICE_BRIDGE_MAX_AUDIO_SECONDS`    | Cap on synthesised voice-note duration before truncation. Replies above this are sent as full text + a truncated voice note ending with a "see text above" tail.                                                               | Tune for your listening preference. 60 s is reasonable for driving — long enough to be useful, short enough to absorb.                                                                          | `60`                                                    |
-| `VOICE_BRIDGE_REJECT_ABOVE_SECONDS` | Inbound voice-note rejection threshold (safety net against accidentally sending megabyte voice notes). Cloud Speech v2 sync API has its own 60 s hard limit, so values above 60 only matter as a friendly user-facing message. | Recommended: 300 (= 5 minutes). Bridge uses byte size as a proxy.                                                                                                                               | `300`                                                   |
-| `VOICE_BRIDGE_KEEP_AUDIO_FILES`     | If `true`, downloaded inbound voice files and synthesised outbound voice files stay on disk (useful for debugging). If `false`, both are deleted after processing (recommended for privacy). Accepted forms: `true             | false                                                                                                                                                                                           | 1                                                       | 0   | yes | no`. | Set `false` for production, `true` for shakedown. | `false` |
+| Variable                            | Purpose                                                                                                                                                                                                                                                                 | How to obtain                                                                                                                               | Example                                         |
+| ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| `VOICE_BRIDGE_GCP_KEY_PATH`         | Path to a GCP service-account key JSON with Speech + TTS access. Passed to the Speech and TTS client constructors as `keyFilename`. Deliberately NOT named `GOOGLE_APPLICATION_CREDENTIALS`: the Anthropic Vertex SDK reads that name too and would hijack Claude auth. | Steps 1-3 of `docs/design/voice-bridge-setup.md` create the service account, grant the two required roles, and download the key.            | `/Users/me/.config/gcloud/voice-bridge-sa.json` |
+| `GOOGLE_CLOUD_PROJECT`              | GCP project billed for Speech v2 + TTS calls. The service account needs `roles/serviceusage.serviceUsageConsumer` and `roles/speech.client` on it.                                                                                                                      | `gcloud projects list` while logged into the account that owns the project.                                                                 | `your-gcp-project`                              |
+| `VOICE_BRIDGE_TTS_VOICE_EL`         | TTS voice name for Greek replies.                                                                                                                                                                                                                                       | List with `gcloud --project=<PROJECT> ml language list-voices --filter="languageCodes=el-GR"`. Pick a `Chirp3-HD` variant for best quality. | `el-GR-Chirp3-HD-Aoede`                         |
+| `VOICE_BRIDGE_TTS_VOICE_EN`         | TTS voice name for English replies.                                                                                                                                                                                                                                     | Same as above, filter on `en-US`.                                                                                                           | `en-US-Chirp3-HD-Aoede`                         |
+| `VOICE_BRIDGE_MAX_AUDIO_SECONDS`    | Positive integer. Cap on synthesised voice-note duration before truncation. Replies above this are sent as full text plus a truncated voice note ending with a "see text above" tail.                                                                                   | Tune for your listening preference. 60 s is reasonable for driving: long enough to be useful, short enough to absorb.                       | `60`                                            |
+| `VOICE_BRIDGE_REJECT_ABOVE_SECONDS` | Positive integer. Inbound voice-note rejection threshold (safety net against accidentally sending megabyte voice notes). Cloud Speech v2 sync API has its own 60 s hard limit, so values above 60 only matter as a friendly user-facing message.                        | Recommended: 300 (5 minutes). The bridge uses byte size as a proxy.                                                                         | `300`                                           |
+| `VOICE_BRIDGE_KEEP_AUDIO_FILES`     | If `true`, downloaded inbound voice files and synthesised outbound voice files stay on disk (useful for debugging). If `false`, both are deleted after processing (recommended for privacy). Accepted forms: `true`, `false`, `1`, `0`, `yes`, `no`.                    | Set `false` for production, `true` for shakedown.                                                                                           | `false`                                         |
 
-### Expiry tracking — ADC renewal
+### Key rotation
 
-ADC tokens issued via `gcloud auth application-default login` expire after roughly 7 days. The bridge does not auto-renew. Per the project's "expiring credential" convention, track the renewal date in `Issues - Pending Items.md` (or your preferred system) and re-run the login command before expiry. Symptom of expired ADC: every voice message logs an `UNAUTHENTICATED` or `PERMISSION_DENIED` error and the user receives `voice transcription failed:` text.
+Service-account keys do not expire, so there is no renewal deadline to track. Rotate on your own
+cadence, or immediately if the key file may have leaked: the exact `gcloud` sequence (create the
+new key, restart the bridge, delete the old key id) is in `docs/design/voice-bridge-setup.md` under
+"Key rotation". Symptom of a revoked or wrong key: every voice message logs `UNAUTHENTICATED` or
+`PERMISSION_DENIED` and the sender receives `voice transcription failed:` text.
 
 ### Per-environment notes
 
-- **Personal vs work account**: ADC is account-scoped. If you have multiple gcloud accounts (e.g., work + personal), confirm with `curl -s -H "Authorization: Bearer $(gcloud auth application-default print-access-token)" https://www.googleapis.com/oauth2/v1/tokeninfo` which account the ADC belongs to. Voice bridge usage typically goes against a personal project to keep work/personal billing separate.
+- **Personal vs work account**: the bridge authenticates to Speech and TTS with the service-account key at `VOICE_BRIDGE_GCP_KEY_PATH`, never with ADC, precisely so it cannot disturb the ADC credential that the Anthropic Vertex SDK uses for Claude. Voice usage typically goes against a personal project to keep work and personal billing separate. Confirm the key's identity with `python3 -c "import json,sys;print(json.load(open(sys.argv[1]))['client_email'])" "$VOICE_BRIDGE_GCP_KEY_PATH"`.
 - **API enablement**: `GOOGLE_CLOUD_PROJECT` must have both `speech.googleapis.com` and `texttospeech.googleapis.com` enabled — see `docs/design/voice-bridge-setup.md` step 3.
 
 ---

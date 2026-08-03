@@ -1,8 +1,10 @@
 # Telegram → Claude Code bridge
 
-Forwards incoming Telegram DMs (from a hardcoded sender allowlist) to Claude
-Code via the Agent SDK and sends the response back as Telegram messages.
-Conversation context survives across messages and across bridge restarts.
+Forwards incoming Telegram DMs (from the sender allowlist in
+`TELEGRAM_BRIDGE_ALLOWED_SENDER_IDS`) to Claude Code via the Agent SDK and
+sends the response back as Telegram messages. Each message is an independent
+turn: session resume is disabled, so no conversation context carries over
+between messages.
 
 ## Flow
 
@@ -13,13 +15,13 @@ incoming DM
 allowlisted? ── no ──▶ drop (logged)
     │ yes
     ▼
-slash command? ── yes ──▶ /clear · /status · /help
+slash command? ── yes ──▶ /clear · /status · /voice · /help
     │ no
     ▼
-FIFO queue ──▶ Agent SDK query() with resume=sessionId
+FIFO queue ──▶ Agent SDK query() with resume=null (fresh turn)
                 │
                 ▼
-       persist new sessionId
+       record sessionId (reported by /status, never resumed)
                 │
                 ▼
      splitMessage() → Telegram chunks (≤ 4000 chars each)
@@ -27,22 +29,28 @@ FIFO queue ──▶ Agent SDK query() with resume=sessionId
 
 ## Slash commands
 
-| Command   | Behavior                                          |
-| --------- | ------------------------------------------------- |
-| `/clear`  | Wipe session — next message starts a fresh thread |
-| `/status` | Show current session ID + last activity timestamp |
-| `/help`   | List commands                                     |
+| Command                        | Behavior                                                   |
+| ------------------------------ | ---------------------------------------------------------- |
+| `/clear`                       | Wipe the recorded session ID and last-activity timestamp   |
+| `/status`                      | Show session ID, last activity timestamp, and voice mode   |
+| `/voice [mirror\|always\|off]` | Show or change voice-reply behaviour (bare `/voice` shows) |
+| `/help`                        | List commands                                              |
 
 ## Files
 
-- `src/index.ts` — entry, FIFO queue, signal handling
-- `src/claude.ts` — Agent SDK wrapper
-- `src/permissions.ts` — **USER-EDITABLE** permission policy
-- `src/state.ts` — session ID persistence (atomic write, mode 0600)
-- `src/allowlist.ts` — sender filter
-- `src/splitMessage.ts` — Telegram chunking (paragraph → line → word → hard cut)
-- `launchd/run.sh` — wrapper that loads zsh profile (for fnm) and execs `npm run bridge`
-- `launchd/com.weirdapps.telegram-claude-bridge.plist` — LaunchAgent definition
+- `src/index.ts`: entry, FIFO queue, signal handling
+- `src/claude.ts`: Agent SDK wrapper (300 s silence watchdog)
+- `src/claudeRetry.ts` / `src/claudeFallback.ts`: retry-on-silence, refusal fallback
+- `src/permissions.ts`: **USER-EDITABLE** permission policy
+- `src/pluginLoader.ts`: resolves enabled Claude Code plugins, allow/deny filtering
+- `src/state.ts`: session ID persistence (atomic write, mode 0600)
+- `src/allowlist.ts`: sender filter
+- `src/splitMessage.ts`: Telegram chunking (paragraph, line, word, hard cut)
+- `src/channels/`: MTProto (Saved Messages) and Bot API input channels
+- `src/stt/` and `src/tts/`: Google Cloud Speech-to-Text and Text-to-Speech
+- `launchd/run.sh`: wrapper that loads zsh profile (for fnm) and execs `npm run bridge`
+- `launchd/com.weirdapps.telegram-claude-bridge.plist.template`: LaunchAgent
+  template; the generated plist is gitignored
 
 ## Required env (in repo-root `.env`)
 
@@ -56,11 +64,24 @@ TELEGRAM_DOWNLOAD_DIR=...
 TELEGRAM_LOG_LEVEL=info
 
 # Bridge-specific:
-TELEGRAM_BRIDGE_ALLOWED_SENDER_IDS=5988833079    # comma-separated numeric IDs
+TELEGRAM_BRIDGE_ALLOWED_SENDER_IDS=123456789    # comma-separated numeric IDs
 
-# Inherits these to use the same Claude provider as ~/nbg_claude.sh:
+# Voice pipeline: all seven are mandatory. loadVoiceBridgeConfig() runs before
+# any channel starts and throws VoiceBridgeConfigError on the first missing one,
+# so the bridge cannot come up text-only. See docs/design/voice-bridge-setup.md.
+# NOTE: the key path is bridge-namespaced on purpose. GOOGLE_APPLICATION_CREDENTIALS
+# is also read by the Anthropic Vertex SDK and would hijack Claude auth.
+VOICE_BRIDGE_GCP_KEY_PATH=$HOME/.config/gcloud/voice-bridge-sa.json
+GOOGLE_CLOUD_PROJECT=your-gcp-project
+VOICE_BRIDGE_TTS_VOICE_EL=el-GR-Chirp3-HD-Aoede
+VOICE_BRIDGE_TTS_VOICE_EN=en-US-Chirp3-HD-Aoede
+VOICE_BRIDGE_MAX_AUDIO_SECONDS=60
+VOICE_BRIDGE_REJECT_ABOVE_SECONDS=300
+VOICE_BRIDGE_KEEP_AUDIO_FILES=false
+
+# Claude provider (Vertex):
 CLAUDE_CODE_USE_VERTEX=1
-ANTHROPIC_VERTEX_PROJECT_ID=nbg-...
+ANTHROPIC_VERTEX_PROJECT_ID=your-vertex-project
 # Region tracks model version: >=4.7 -> eu, <=4.6 -> europe-west1. opus-5 -> eu.
 CLOUD_ML_REGION=eu
 ANTHROPIC_MODEL=claude-opus-5[1m]
@@ -71,6 +92,16 @@ Optional:
 ```bash
 TELEGRAM_BRIDGE_STATE_PATH=$HOME/.telegram/claude-bridge.state.json
 TELEGRAM_BRIDGE_CWD=$HOME    # working dir for Claude (file access boundary)
+
+TELEGRAM_BOT_TOKEN=...                        # adds the Bot API input channel
+TELEGRAM_BRIDGE_BOT_TMPDIR=$HOME/.telegram/bot-inbox
+TELEGRAM_BRIDGE_DISABLE_SAVED_MESSAGES=true   # bot-only, no MTProto login
+
+BRIDGE_PLUGIN_ALLOWLIST=                      # unset = load every enabled plugin
+BRIDGE_PLUGIN_DENYLIST=                       # comma-separated name@marketplace
+
+VERTEX_MODEL_FALLBACK=claude-opus-5[1m]       # refusal-retry model
+VERTEX_REGION_FALLBACK=eu                     # must pair with the model above
 ```
 
 ## Run in foreground
