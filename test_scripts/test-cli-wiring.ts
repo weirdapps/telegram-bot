@@ -5,7 +5,7 @@
 // No real Telegram calls are made because every exercised invocation either
 // prints help (--help) or short-circuits on missing flags / missing env.
 
-import { describe, test, expect } from 'vitest';
+import { describe, test, expect, vi } from 'vitest';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
@@ -16,6 +16,14 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const PROJECT_ROOT = path.resolve(__dirname, '..');
 const CLI_ENTRY = path.join(PROJECT_ROOT, 'src', 'cli', 'index.ts');
+
+// Every test here spawns `npx tsx` as a child process, which pays a cold
+// TypeScript transform on each call. That takes single-digit seconds on an idle
+// machine but comfortably exceeds vitest's 5s default when the host is busy
+// (parallel CI jobs, a loaded laptop), producing "Test timed out in 5000ms"
+// failures that have nothing to do with the code under test. runCli already
+// allows the child 30s, so the surrounding test must allow at least as much.
+vi.setConfig({ testTimeout: 45_000 });
 
 interface RunOpts {
   env?: Record<string, string | undefined>;
