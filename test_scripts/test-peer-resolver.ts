@@ -63,8 +63,7 @@ describe('resolvePeer', () => {
     expect(peer).toMatchObject({ __inputPeer: true });
     expect(client.invoke).toHaveBeenCalledTimes(1);
     const invokeArg = client.invoke.mock.calls[0]?.[0] as
-      | { phone?: string; className?: string }
-      | undefined;
+      { phone?: string; className?: string } | undefined;
     // GramJS Api.contacts.ResolvePhone instance carries `.phone` (digits, no "+").
     expect(invokeArg?.phone).toBe('15551234567');
     // getEntity should NOT be called on the success path.
