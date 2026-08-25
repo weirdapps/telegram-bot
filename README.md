@@ -155,7 +155,7 @@ command under systemd, but no unit file or systemd recipe ships in this repo.
 
 ## Vertex model pinning (gotcha)
 
-The bridge reads `ANTHROPIC_MODEL` from its own `.env`, not from `~/nbg_claude.sh` or any parent
+The bridge reads `ANTHROPIC_MODEL` from its own `.env`, not from `~/the shell launcher` or any parent
 shell profile. A stale pin (for example, a model that has been retired from Vertex or is not
 provisioned in the pinned region) surfaces as `429 quota exceeded`, and the bot appears to have
 no access. On every model upgrade, bump `.env` and restart the bridge.

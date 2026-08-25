@@ -190,7 +190,7 @@ default for repos NOT in CloudStorage.
 ## Security posture
 
 By default the bridge runs the SDK in `bypassPermissions` mode (matches your
-interactive `~/nbg_claude.sh` setup). For per-tool gating, edit
+interactive `the shell launcher` setup). For per-tool gating, edit
 `src/permissions.ts` and switch `getPermissionMode()` to `'default'` —
 `canUseTool()` will then decide each call.
 

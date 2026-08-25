@@ -30,7 +30,7 @@ npm run typecheck   # tsc --noEmit
 
 - TypeScript strict mode
 - ES modules (`"type": "module"`)
-- Bridge pins its own `ANTHROPIC_MODEL` in `.env` (independent of nbg_claude.sh) — bump `.env` on model upgrades to avoid Vertex 429
+- Bridge pins its own `ANTHROPIC_MODEL` in `.env` (independent of the shell launcher) — bump `.env` on model upgrades to avoid Vertex 429
 - No fallbacks for configuration: every required env var throws (`ConfigError` / `VoiceBridgeConfigError`) when unset. Do not add defaults.
 - `npm run bridge` needs the seven voice vars (`VOICE_BRIDGE_*` + `GOOGLE_CLOUD_PROJECT`) even for text-only use; `loadVoiceBridgeConfig()` runs before any channel starts. The key path var is `VOICE_BRIDGE_GCP_KEY_PATH`, never `GOOGLE_APPLICATION_CREDENTIALS` (that name would hijack Vertex auth).
 - Claude session resume is deliberately disabled (`resume: null`): each Telegram message is a fresh turn. Do not re-enable it without reading the comment in `bridge/src/index.ts`.

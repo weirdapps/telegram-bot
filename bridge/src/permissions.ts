@@ -8,7 +8,7 @@ import type { CanUseTool, PermissionMode } from '@anthropic-ai/claude-agent-sdk'
  * Two strategies:
  *
  *   'bypassPermissions' (default)
- *     Mirrors your interactive ~/nbg_claude.sh setup. Every tool call
+ *     Mirrors your interactive the shell launcher setup. Every tool call
  *     fires without gating. Maximum power. Risk: a prompt-injection
  *     reaching Claude (e.g. adversarial content in an email Claude
  *     reads) could trigger anything reachable through your MCP servers

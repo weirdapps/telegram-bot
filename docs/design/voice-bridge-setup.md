@@ -8,9 +8,9 @@
 
 ## Why a service-account key (and not ADC)
 
-The bridge process also runs the Anthropic Agent SDK in Vertex mode for Claude. The Anthropic SDK reads `GOOGLE_APPLICATION_CREDENTIALS` from process.env to authenticate against Vertex AI. If we used ADC (`gcloud auth application-default login`) for the personal Google account on this Mac, the credential would override the NBG Vertex auth and every Claude turn would fail with `aiplatform.endpoints.predict denied`.
+The bridge process also runs the Anthropic Agent SDK in Vertex mode for Claude. The Anthropic SDK reads `GOOGLE_APPLICATION_CREDENTIALS` from process.env to authenticate against Vertex AI. If we used ADC (`gcloud auth application-default login`) for the personal Google account on this Mac, the credential would override the the corporate Vertex auth and every Claude turn would fail with `aiplatform.endpoints.predict denied`.
 
-Workaround: use a **service-account key** scoped to the personal GCP project for STT/TTS, expose it through a bridge-namespaced env var (`VOICE_BRIDGE_GCP_KEY_PATH`), and pass the path explicitly to the Speech and TTS client constructors as `keyFilename`. The Anthropic SDK then never sees the bridge's credential and falls back to ADC (NBG) as designed.
+Workaround: use a **service-account key** scoped to the personal GCP project for STT/TTS, expose it through a bridge-namespaced env var (`VOICE_BRIDGE_GCP_KEY_PATH`), and pass the path explicitly to the Speech and TTS client constructors as `keyFilename`. The Anthropic SDK then never sees the bridge's credential and falls back to ADC (corporate) as designed.
 
 ---
 
@@ -24,13 +24,13 @@ Workaround: use a **service-account key** scoped to the personal GCP project for
 
 ## Step 1 — Add the personal Google account to gcloud (interactive)
 
-This is `gcloud auth login`, NOT `gcloud auth application-default login`. It writes to `~/.config/gcloud/credentials.db` and does NOT touch ADC at `~/.config/gcloud/application_default_credentials.json`. Your existing NBG Vertex auth is unaffected.
+This is `gcloud auth login`, NOT `gcloud auth application-default login`. It writes to `~/.config/gcloud/credentials.db` and does NOT touch ADC at `~/.config/gcloud/application_default_credentials.json`. Your existing the corporate Vertex auth is unaffected.
 
 ```bash
 gcloud auth login --account=you@gmail.com
 ```
 
-A browser opens. **Carefully select `you@gmail.com` in the picker** — if your browser is signed into both NBG and personal accounts, the picker may default to the wrong one. Use Incognito or sign out of `your-work@example.com` first if unsure. The command prints `You are now logged in as [you@gmail.com]` on success.
+A browser opens. **Carefully select `you@gmail.com` in the picker** — if your browser is signed into both corporate and personal accounts, the picker may default to the wrong one. Use Incognito or sign out of `your-work@example.com` first if unsure. The command prints `You are now logged in as [you@gmail.com]` on success.
 
 Verify:
 
@@ -199,7 +199,7 @@ gcloud --account=you@gmail.com \
 | Voice note replied with `voice transcription failed: ... PERMISSION_DENIED ... speech.recognizers.recognize` | SA missing `roles/speech.client`                                                               | Re-run Step 3 grants, wait 60 s for IAM propagation                                                      |
 | Voice note replied with `voice transcription failed: ... model "chirp_2" does not exist in the location ...` | Code drift back to chirp_2                                                                     | Confirm `bridge/src/stt/google.ts` uses `STT_LOCATION='eu'` and `STT_MODEL='long'`                       |
 | Voice note replied with `couldn't make out the voice note` despite clear speech                              | Confidence-zero transcripts being rejected                                                     | Confirm `bridge/src/stt/google.ts` skips zero-confidence in aggregation (the `top.confidence > 0` guard) |
-| Claude responses fail with `aiplatform.endpoints.predict denied on resource '//.../projects/nbg-...'`        | `GOOGLE_APPLICATION_CREDENTIALS` is set in process env, hijacking Anthropic SDK auth           | Confirm `.env` uses `VOICE_BRIDGE_GCP_KEY_PATH` (not `GOOGLE_APPLICATION_CREDENTIALS`); restart bridge   |
+| Claude responses fail with `aiplatform.endpoints.predict denied on resource '//.../projects/<corp-project>'` | `GOOGLE_APPLICATION_CREDENTIALS` is set in process env, hijacking Anthropic SDK auth           | Confirm `.env` uses `VOICE_BRIDGE_GCP_KEY_PATH` (not `GOOGLE_APPLICATION_CREDENTIALS`); restart bridge   |
 | Reply arrives as a generic file attachment, not a playable waveform                                          | `voice: true` flag missing — check `sendVoice` in TelegramUserClient.ts                        | Should not happen with current code; file an issue                                                       |
 | Voice replies in robotic Greek, not Chirp3-HD                                                                | Voice name typo in `VOICE_BRIDGE_TTS_VOICE_EL`                                                 | Verify with `gcloud ml language list-voices`                                                             |
 | Long Greek replies cut off mid-sentence with no tail message                                                 | Truncation worked but the tail phrase is missing — check `truncateForSpeech` in replyRouter.ts | Should not happen; tail is always appended                                                               |
