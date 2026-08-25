@@ -1,6 +1,10 @@
 node_modules
 dist/
 .env
+# Backups and per-environment variants. A `git add -A` staged a .env.bak-* here
+# once; this repo is public, so the pattern is what stops it, not vigilance.
+.env.*
+!.env.example
 *.session
 *.session.txt
 coverage/
