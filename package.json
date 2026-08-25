@@ -4,7 +4,7 @@
   "description": "TypeScript library + CLI that logs into Telegram as a real user (MTProto via GramJS) to send and receive DMs.",
   "type": "module",
   "engines": {
-    "node": ">=20"
+    "node": ">=22.12.0"
   },
   "main": "dist/src/index.js",
   "types": "dist/src/index.d.ts",
@@ -30,9 +30,9 @@
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.126",
-    "@google-cloud/speech": "^7.3.1",
-    "@google-cloud/text-to-speech": "^6.4.1",
-    "commander": "^14.0.3",
+    "@google-cloud/speech": "^8.0.1",
+    "@google-cloud/text-to-speech": "^7.0.0",
+    "commander": "^15.0.0",
     "dotenv": "^17.4.2",
     "grammy": "^1.42.0",
     "input": "^1.0.1",
