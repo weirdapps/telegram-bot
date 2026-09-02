@@ -155,10 +155,32 @@ command under systemd, but no unit file or systemd recipe ships in this repo.
 
 ## Vertex model pinning (gotcha)
 
-The bridge reads `ANTHROPIC_MODEL` from its own `.env`, not from `~/the shell launcher` or any parent
-shell profile. A stale pin (for example, a model that has been retired from Vertex or is not
-provisioned in the pinned region) surfaces as `429 quota exceeded`, and the bot appears to have
-no access. On every model upgrade, bump `.env` and restart the bridge.
+`bridge/src/index.ts` starts with `import 'dotenv/config'`, which reads `.env` from the process
+working directory. Crucially, dotenv does **not** overwrite a variable that is already set: its
+`override` option defaults to false. Precedence is therefore the opposite of what the filename
+suggests:
+
+1. **The process environment the bridge is launched with wins.** A systemd `ExecStart` export, or a
+   variable exported in the shell you ran `npm run bridge` from, is final.
+2. **`.env` only fills the gaps.** It supplies the variables nothing else has already set.
+
+In production the bridge runs on the maintainer's VPS as a systemd **user** unit
+(`telegram-bridge.service`). Its `ExecStart` sources the operator's Vertex environment file, then
+exports `ANTHROPIC_MODEL` and `CLOUD_ML_REGION` explicitly, then `cd`s into the repo and execs
+`npm run bridge`. Those exports are the authoritative model pin there, and editing the repo's
+`.env` on that host changes nothing:
+
+```bash
+systemctl --user edit --full telegram-bridge.service   # change the ExecStart exports
+systemctl --user daemon-reload
+systemctl --user restart telegram-bridge.service
+```
+
+`.env` is the authoritative pin only where nothing exports `ANTHROPIC_MODEL` first, which is the
+normal case for a laptop running `npm run bridge` by hand.
+
+A stale pin (for example, a model that has been retired from Vertex, or one paired with the wrong
+region) surfaces as `429 quota exceeded`, and the bot appears to have no access.
 
 Region pairing is strict:
 
