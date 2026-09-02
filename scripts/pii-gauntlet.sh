@@ -119,9 +119,22 @@ scan_ci() {
   fi
 }
 
+# Path-shaped placeholders: tokens that mark a whole FILE as an example or a
+# template. Matched against the `path:` prefix only. Matched against the whole
+# line, which is what used to happen, `template` and `<[^>]+>` also cancelled
+# hits on CONTENT: any line carrying an HTML tag excluded itself, so a real
+# address in a table cell (`<td>firstname.surname@<employer-domain></td>`) was
+# never reported.
+PLACEHOLDER_PATH='example|sample|template'
+
 # Drop hits whose PATH is a historical record rather than live configuration.
-# Path-scoped only. Never extend this to filter on matched content: that would
-# hide live hits and turn a working guardrail into a false green.
+#
+# `$2` is still matched against the whole line, on purpose: the private denylist
+# and the Azure tenant check pass narrow, literal fixture VALUES (`123456789`,
+# an all-zero GUID) that only ever occur in content. Keep anything passed there
+# literal and specific. A broad token in that position hides live hits and turns
+# a working guardrail into a false green, which is precisely what a bare
+# `template` did.
 apply_exclusion() {
   local hits="$1"
   local exclude="$2"
@@ -129,6 +142,8 @@ apply_exclusion() {
     printf '%s' "$hits"
     return
   fi
+  hits=$(printf '%s\n' "$hits" | grep -vE "^[^:]*($PLACEHOLDER_PATH)" || true)
+  [ -z "$hits" ] && return
   # Copyright attribution names the author on purpose and is required by the
   # licence. Flagging it is noise, and noise is how a real hit gets ignored.
   printf '%s\n' "$hits" | grep -vE "$exclude" | grep -viE '\(c\)[[:space:]]*[0-9]{4}|copyright' || true
@@ -209,10 +224,22 @@ check() {
 # entries describing the removal of the real host. A check that fires on
 # deliberate, already-disclosed content teaches you to ignore it, which is how
 # the four real exposures sat unnoticed next to a green gauntlet.
-# Doc placeholders. Extend this when a new invented example host trips the check:
-# being asked once "is this a real tenant?" is the check doing its job, and is a
-# far better failure mode than the silence it replaces.
-PLACEHOLDER='contoso|example|sample|template|your[-_.]?tenant|your-tenant|<[^>]+>|firstname\.lastname|your\.email|recipient\.name|user@|name@|(test|overridden|envvar|dummy|placeholder|foo|bar|[a-z])(-my)?\.sharepoint'
+# Doc placeholders, matched against the matched LINE, so every alternative here
+# has to be specific enough to name a placeholder and nothing else. Tokens that
+# describe a file rather than a value (`example`, `sample`, `template`) live in
+# PLACEHOLDER_PATH; `<[^>]+>` is gone entirely, because it matched every line of
+# HTML in the repo. Extend this when a new invented example host trips the
+# check: being asked once "is this a real tenant?" is the check doing its job,
+# and is a far better failure mode than the silence it replaces.
+# List fixture hosts by name. The bare `[a-z]` that used to close this
+# alternation matched the last letter of every real tenant as well
+# (`groupfoo.sharepoint.com` contains `o.sharepoint`), so the SharePoint check
+# could never fire at all. The leading `(^|[^a-z0-9.-])` is load-bearing for the
+# same reason: it pins a fixture host to the START of a hostname label, and
+# without it the single-letter `y` still matches the tail of every real
+# `<tenant>-my.sharepoint.com`, which is the OneDrive-for-Business half of the
+# very thing this check looks for.
+PLACEHOLDER='contoso|your[-_.]?tenant|your-tenant|firstname\.lastname|your\.email|recipient\.name|user@|name@|(^|[^a-z0-9.-])(test|overridden|envvar|dummy|placeholder|foo|bar|a|b|x|y|z)(-my)?\.sharepoint'
 
 # Some repos name the employer on purpose: a marketplace written for colleagues
 # says so in its README by design. Those opt out with a repo-root marker rather
