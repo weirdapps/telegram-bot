@@ -329,6 +329,36 @@ PLACEHOLDER='contoso|your[-_.]?tenant|firstname\.lastname|your\.email|recipient\
 # bare digits, so it cannot match anything else in the repo.
 PLACEHOLDER_VALUE='TELEGRAM_BOT_TOKEN=123456789'
 
+# A second repo-local VALUE, same mechanism, different reason: the owner's name
+# in this repo's own MIT attribution is a deliberate publication, not a leak.
+# README.md carries `[MIT](LICENSE), (c) 2026 <name>.` and the denylist's
+# owner-name and personal-name checks both fire on it.
+#
+# The tempting fix, and the one this repo used to ship, is a filter dropping any
+# line containing the word "copyright". That was removed because it hands anyone
+# a one-word suppression token: put "copyright" on the same line as a real
+# address and the scanner goes quiet. This is the narrow version. It requires the
+# entire attribution shape, the literal `[MIT](LICENSE), (c) ` followed by a
+# four-digit year, so defeating it means writing a fake MIT attribution line into
+# a README, which is conspicuous rather than invisible.
+#
+# It is a VALUE exclusion, not a path exclusion, so the rest of README.md is
+# still scanned. Note this only ever fires locally: on a public runner the
+# private denylist is absent and every name-based check SKIPs, so CI has always
+# been green here. The point is that a local doctor which cries wolf trains
+# people to stop reading it.
+#
+# Break-tested, including what it does NOT cover:
+#   plain mention on an ordinary line            -> still caught
+#   the attribution line itself                  -> suppressed, as intended
+#   attribution shape PLUS a payload, same line  -> NOT caught
+# That last one is `apply_exclusion` operating on whole lines, which every
+# exclusion in this file inherits; it is not specific to this one. Fixing it
+# properly means matching on the matched text rather than the line, which
+# changes the output format. Recorded here so the limit is known rather than
+# discovered.
+LICENSE_ATTRIBUTION='\[MIT\]\(LICENSE\), \(c\) 20[0-9][0-9] '
+
 # Some repos name the employer on purpose: a marketplace written for colleagues
 # says so in its README by design. Those opt out with a repo-root marker rather
 # than carrying a permanent red light.
@@ -374,9 +404,9 @@ if [ -r "$PII_DENYLIST" ]; then
     case "$label" in ''|\#*) continue ;; esac
     [ -z "$pattern" ] && continue
     if [ -n "$exclude" ]; then
-      exclude="$exclude|$PLACEHOLDER_VALUE"
+      exclude="$exclude|$PLACEHOLDER_VALUE|$LICENSE_ATTRIBUTION"
     else
-      exclude="$PLACEHOLDER_VALUE"
+      exclude="$PLACEHOLDER_VALUE|$LICENSE_ATTRIBUTION"
     fi
     check "$label" "$pattern" "$exclude"
     loaded=$((loaded + 1))
