@@ -23,6 +23,20 @@ updates:
         patterns:
           - 'vitest'
           - '@vitest/*'
+      # The same family again, because `applies-to` defaults to
+      # 'version-updates' and a group without it never bundles SECURITY
+      # updates: those stay one PR per vulnerable package. On 2026-09-10 that
+      # split GHSA jobs for vitest and @vitest/mocker one second apart, and
+      # the mocker job, resolving against a tree still on vitest@4.1.10, could
+      # not reach the fixed 4.1.11 alone. It reported
+      # security_update_not_possible and the run went red
+      # (actions/runs/34426571705), while the sibling vitest job carried the
+      # whole family and closed both alerts 105 seconds later.
+      vitest-security:
+        applies-to: security-updates
+        patterns:
+          - 'vitest'
+          - '@vitest/*'
       development-dependencies:
         dependency-type: 'development'
         update-types:
