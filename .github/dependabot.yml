@@ -14,11 +14,23 @@ updates:
       - 'dependencies'
       - 'npm'
     groups:
+      # First, and deliberately without update-types, so it also catches
+      # majors. @vitest/* pins an EXACT peer on vitest ('peer vitest@"4.1.11"
+      # from @vitest/coverage-v8@4.1.11'), so a major offered one package at a
+      # time gives npm ci an unresolvable tree and it dies on ERESOLVE before a
+      # single test runs. The family only moves together.
+      vitest:
+        patterns:
+          - 'vitest'
+          - '@vitest/*'
       development-dependencies:
         dependency-type: 'development'
         update-types:
           - 'minor'
           - 'patch'
+        exclude-patterns:
+          - 'vitest'
+          - '@vitest/*'
       production-dependencies:
         dependency-type: 'production'
         update-types:
