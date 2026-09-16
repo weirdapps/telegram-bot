@@ -11,5 +11,17 @@ jobs:
     uses: weirdapps/shared-workflows/.github/workflows/deps-refresh.yml@1cdc75d954fa1d60ef35937b21fccde923f42f9e # main
     with:
       node_version: '22'
+      # Node 22.23.2 ships npm 10.9.3, whose arborist cannot walk this tree's peer
+      # graph: the 2026-09-16 refresh died on `npm update` with "Cannot read
+      # properties of null (reading 'edgesOut')", thrown from #loadPeerSet three
+      # levels into peer recursion (build-ideal-tree.js:1289). The lockfile is
+      # sound -- all 24 declared deps present, no drift -- and npm 11.19 completes
+      # the same update on the same input. Eleven sibling repos on this shared
+      # workflow are green, so this is our peer graph meeting an npm 10 bug, not
+      # something to fix in shared-workflows.
+      #
+      # Upgrade npm rather than node_version: 22 is what ci.yml, sonarcloud.yml and
+      # engines (>=22.12.0) all target, and gate_cmd must run on the runtime we ship.
+      setup_cmd: npm install -g npm@11
       gate_cmd: CI=true npm test
     secrets: inherit
