@@ -40,4 +40,15 @@ regexes = [
   # sqp_ 40-hex token in the same shape).
   # Canonical copy: weirdapps/shared-workflows/.gitleaks.toml
   '''^"?\$\{?[A-Za-z_][A-Za-z0-9_]*\}?:"?$''',
+
+  # Telegram api_hash PLACEHOLDER in docs/design/configuration-guide.md, inside
+  # a block captioned "Minimal working example" and sitting next to
+  # TELEGRAM_API_ID=23456789, +306900000000 and /Users/me/. generic-api-key
+  # fires on it because the shape is right: 32 lowercase hex. The value is the
+  # run 0123456789abcdef written twice, which no issued api_hash can be.
+  # Anchored on that exact literal rather than on the file or on the
+  # TELEGRAM_API_HASH key, so a real hash pasted into this same file is still
+  # caught. Verified on gitleaks 8.30.1, 2026-09-17: with this line in place a
+  # planted TELEGRAM_API_HASH=7f3a9c1e5b2d8046af61c390be27d4e8 still reports.
+  '''^0123456789abcdef0123456789abcdef$''',
 ]
