@@ -13,6 +13,21 @@ updates:
     labels:
       - 'dependencies'
       - 'npm'
+    ignore:
+      # TypeScript 7.x is not installable here. TS 7 is the native Go port and
+      # deliberately ships no programmatic compiler API, while every published
+      # @typescript-eslint release still declares peer
+      # typescript ">=4.8.4 <6.1.0". npm exits ERESOLVE and the Dependabot job
+      # dies with dependency_file_not_resolvable, so the PR cannot pass and
+      # cannot be merged; worse, forced through with --legacy-peer-deps it
+      # would install a resolution that lint cannot run against.
+      # Scoped to this repo and the two remotion repos on purpose: TS 7 is only
+      # blocked where typescript-eslint is present, and it installs cleanly
+      # where it is not (both plessas-marketplace MCP servers are on ~7.0.2).
+      # Drop this once @typescript-eslint widens the peer range.
+      - dependency-name: 'typescript'
+        update-types:
+          - 'version-update:semver-major'
     groups:
       # First, and deliberately without update-types, so it also catches
       # majors. @vitest/* pins an EXACT peer on vitest ('peer vitest@"4.1.11"
