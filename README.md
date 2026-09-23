@@ -114,8 +114,8 @@ Core `.env` variables (`.env.example` carries the same set as commented placehol
 | `ANTHROPIC_VERTEX_PROJECT_ID`            | Vertex            | GCP project hosting the Anthropic Vertex offering.                                                                                                                      |
 | `CLOUD_ML_REGION`                        | Vertex            | Region for the pinned `ANTHROPIC_MODEL`.                                                                                                                                |
 | `ANTHROPIC_MODEL`                        | Vertex            | Pinned model, e.g. `claude-opus-5-5[1m]` (see next section).                                                                                                            |
-| `VERTEX_MODEL_FALLBACK`                  | Optional (Vertex) | Refusal-retry model (default `claude-opus-5[1m]`).                                                                                                                      |
-| `VERTEX_REGION_FALLBACK`                 | Optional (Vertex) | Region for that fallback model (default `eu`).                                                                                                                          |
+| `VERTEX_MODEL_FALLBACK`                  | Optional (Vertex) | Refusal-retry model (default `claude-opus-4-6[1m]`).                                                                                                                    |
+| `VERTEX_REGION_FALLBACK`                 | Optional (Vertex) | Region for that fallback model (default `europe-west1`).                                                                                                                |
 | `BRIDGE_PLUGIN_ALLOWLIST`                | Optional          | Comma-separated `name@marketplace` keys. When set, only these enabled plugins load.                                                                                     |
 | `BRIDGE_PLUGIN_DENYLIST`                 | Optional          | Comma-separated `name@marketplace` keys to skip. Evaluated after the allowlist.                                                                                         |
 
@@ -188,13 +188,13 @@ Region pairing is strict:
 - Models `<= 4.6` must run in region `europe-west1`.
 
 The auto-fallback in `bridge/src/claudeFallback.ts` therefore swaps `CLOUD_ML_REGION` for the
-duration of the retry: it reads `VERTEX_MODEL_FALLBACK` (default `claude-opus-5[1m]`) together with
-`VERTEX_REGION_FALLBACK` (default `eu`). Change those two as a pair — a fallback model routed to
-the wrong region is exactly the `429` this section warns about.
+duration of the retry: it reads `VERTEX_MODEL_FALLBACK` (default `claude-opus-4-6[1m]`) together
+with `VERTEX_REGION_FALLBACK` (default `europe-west1`). Change those two as a pair — a fallback
+model routed to the wrong region is exactly the `429` this section warns about.
 
-As of 2026-08-03 the fallback is the _same_ model as the primary (Opus 5), so the retry absorbs
-transient errors but is no longer a model-class escape hatch from a refusal. To restore one, set
-`VERTEX_MODEL_FALLBACK=claude-opus-4-6[1m]` and `VERTEX_REGION_FALLBACK=europe-west1`.
+As of 2026-09-23 the escape hatch is restored: the primary is Opus 5.5 @ `eu` and the fallback is
+Opus 4.6 @ `europe-west1`, so a refusal retry is a genuine different-model attempt. Between
+2026-08-03 and 2026-09-23 both tiers were Opus 5 and the retry could only absorb transient errors.
 
 ## Slash commands
 

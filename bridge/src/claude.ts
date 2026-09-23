@@ -101,8 +101,8 @@ export async function askClaude(opts: {
       onFallback: () =>
         console.warn(
           `[bridge] Opus refusal detected — retrying on fallback tier ${
-            process.env.VERTEX_MODEL_FALLBACK ?? 'claude-opus-5[1m]'
-          } (${process.env.VERTEX_REGION_FALLBACK ?? 'eu'})`,
+            process.env.VERTEX_MODEL_FALLBACK ?? 'claude-opus-4-6[1m]'
+          } (${process.env.VERTEX_REGION_FALLBACK ?? 'europe-west1'})`,
         ),
     });
   } finally {

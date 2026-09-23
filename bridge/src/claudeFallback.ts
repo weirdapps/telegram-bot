@@ -63,8 +63,11 @@ export async function withFallbackOnRefusal(
   if (!isLikelyPolicyRefusal(first)) return first;
 
   const fallbackModel =
-    opts?.fallbackModel ?? process.env.VERTEX_MODEL_FALLBACK ?? 'claude-opus-5[1m]';
-  const fallbackRegion = opts?.fallbackRegion ?? process.env.VERTEX_REGION_FALLBACK ?? 'eu';
+    opts?.fallbackModel ?? process.env.VERTEX_MODEL_FALLBACK ?? 'claude-opus-4-6[1m]';
+  // The region default moves with the model: 4.6 is a <=4.6 model and belongs in
+  // europe-west1, so an 'eu' default would 429 every retry.
+  const fallbackRegion =
+    opts?.fallbackRegion ?? process.env.VERTEX_REGION_FALLBACK ?? 'europe-west1';
   if (opts?.onFallback) await opts.onFallback(first);
 
   // Region is a function of model version (>=4.7 -> eu, <=4.6 -> europe-west1) and must

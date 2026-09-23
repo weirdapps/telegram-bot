@@ -100,8 +100,8 @@ TELEGRAM_BRIDGE_DISABLE_SAVED_MESSAGES=true   # bot-only, no MTProto login
 BRIDGE_PLUGIN_ALLOWLIST=                      # unset = load every enabled plugin
 BRIDGE_PLUGIN_DENYLIST=                       # comma-separated name@marketplace
 
-VERTEX_MODEL_FALLBACK=claude-opus-5[1m]       # refusal-retry model
-VERTEX_REGION_FALLBACK=eu                     # must pair with the model above
+VERTEX_MODEL_FALLBACK=claude-opus-4-6[1m]     # refusal-retry model
+VERTEX_REGION_FALLBACK=europe-west1           # must pair with the model above
 ```
 
 ## Run in foreground
