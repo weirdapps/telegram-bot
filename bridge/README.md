@@ -84,7 +84,7 @@ CLAUDE_CODE_USE_VERTEX=1
 ANTHROPIC_VERTEX_PROJECT_ID=your-vertex-project
 # Region tracks model version: >=4.7 -> eu, <=4.6 -> europe-west1. opus-5 -> eu.
 CLOUD_ML_REGION=eu
-ANTHROPIC_MODEL=claude-opus-5[1m]
+ANTHROPIC_MODEL=claude-opus-5-5[1m]
 ```
 
 Optional:
