@@ -31,11 +31,12 @@ export async function askClaude(opts: {
 }): Promise<ClaudeResult> {
   const mode = getPermissionMode();
 
-  // One agentic turn. `modelOverride` (null = default ANTHROPIC_MODEL = Opus 5 @ eu)
-  // lets the refusal-fallback re-run the turn on VERTEX_MODEL_FALLBACK, routed to
-  // VERTEX_REGION_FALLBACK, without touching process env. Since 2026-08-03 that
-  // fallback is also Opus 5 @ eu, so the retry absorbs transient errors rather than
-  // escaping a refusal — see claudeFallback.ts and the README's model-pinning section.
+  // One agentic turn. `modelOverride` (null = default ANTHROPIC_MODEL = Opus 5.5 @ eu
+  // since 2026-09-23) lets the refusal-fallback re-run the turn on
+  // VERTEX_MODEL_FALLBACK, routed to VERTEX_REGION_FALLBACK, without touching process
+  // env. That fallback stayed on Opus 5 when the primary moved to 5.5, so the retry is
+  // a real model-class downgrade again, not the same-model retry it was from 2026-08-03
+  // to 2026-09-23 — see claudeFallback.ts and the README's model-pinning section.
   const runOnce = async (modelOverride: string | null): Promise<SDKResultMessage> => {
     const abortController = new AbortController();
     const stream = query({
