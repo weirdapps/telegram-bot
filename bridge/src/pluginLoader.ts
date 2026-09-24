@@ -17,6 +17,11 @@ import type { Logger } from '../../src/logger/logger.js';
  *   3. Apply BRIDGE_PLUGIN_DENYLIST (comma-separated `name@marketplace`).
  *   4. Skip + warn entries whose installer record or path is missing.
  *
+ * BRIDGE_ENABLED_PLUGINS (comma-separated `name@marketplace`), when set,
+ * REPLACES step 1: the bridge loads that set whatever settings.json says.
+ * It exists so a host can empty its CLI-wide enabledPlugins (every headless
+ * `claude -p` job inherits them) while the bridge keeps its own full set.
+ *
  * Pure I/O helpers below are split out so they can be unit-tested with a
  * fixture cache directory by overriding `claudeHome`.
  */
@@ -56,6 +61,12 @@ export interface LoadOptions {
    * Allowlist is evaluated BEFORE denylist.
    */
   allowlist?: string;
+  /**
+   * Comma-separated `name@marketplace` that REPLACES settings.json
+   * enabledPlugins as the enabled set. Defaults to BRIDGE_ENABLED_PLUGINS.
+   * When unset or empty, settings.json is read as before.
+   */
+  enabled?: string;
   logger?: Logger;
 }
 
@@ -68,7 +79,14 @@ export function loadEnabledPlugins(opts: LoadOptions = {}): LoadResult {
 
   const result: LoadResult = { plugins: [], loadedKeys: [], skipped: [], denied: [] };
 
-  const enabled = readEnabledPlugins(join(home, 'settings.json'));
+  const explicit = [...parseCommaSet(opts.enabled ?? process.env.BRIDGE_ENABLED_PLUGINS)];
+  const enabled = explicit.length > 0 ? explicit : readEnabledPlugins(join(home, 'settings.json'));
+  if (explicit.length > 0) {
+    log?.info(
+      { component: 'pluginLoader', enabledCount: explicit.length },
+      'enabled set taken from BRIDGE_ENABLED_PLUGINS, not settings.json',
+    );
+  }
   if (enabled.length === 0) {
     log?.warn(
       { component: 'pluginLoader', settingsPath: join(home, 'settings.json') },

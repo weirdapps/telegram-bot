@@ -102,6 +102,7 @@ async function main(): Promise<void> {
       deniedPlugins: pluginLoad.denied.length,
       keys: pluginLoad.loadedKeys,
       allowlistActive: !!(process.env.BRIDGE_PLUGIN_ALLOWLIST ?? '').trim(),
+      enabledSetFromEnv: !!(process.env.BRIDGE_ENABLED_PLUGINS ?? '').trim(),
     },
     `loaded ${pluginLoad.loadedKeys.length} plugins from user settings`,
   );

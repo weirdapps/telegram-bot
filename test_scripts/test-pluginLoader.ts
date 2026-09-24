@@ -269,4 +269,64 @@ describe('loadEnabledPlugins', () => {
     expect(out.denied).toEqual(['b@m']);
     expect(out.skipped.find((s) => s.key === 'c@m')?.reason).toMatch(/not in allowlist/);
   });
+  describe('BRIDGE_ENABLED_PLUGINS (explicit enabled set)', () => {
+    const saved = process.env.BRIDGE_ENABLED_PLUGINS;
+    afterEach(() => {
+      if (saved === undefined) delete process.env.BRIDGE_ENABLED_PLUGINS;
+      else process.env.BRIDGE_ENABLED_PLUGINS = saved;
+    });
+
+    const spec = (enabled: Record<string, boolean>): HomeSpec => ({
+      enabled,
+      installed: {
+        'foo@mp1': [{ installSubpath: 'mp1/foo/1.0.0', scope: 'user' }],
+        'bar@mp1': [{ installSubpath: 'mp1/bar/2.0.0', scope: 'user' }],
+      },
+      realDirs: ['mp1/foo/1.0.0', 'mp1/bar/2.0.0'],
+    });
+
+    it('loads the explicit set when settings.json enabledPlugins is empty', () => {
+      home = buildClaudeHome(spec({}));
+      const out = loadEnabledPlugins({ claudeHome: home, enabled: 'foo@mp1, bar@mp1' });
+      expect(out.loadedKeys).toEqual(['foo@mp1', 'bar@mp1']);
+    });
+
+    it('replaces, not merges with, settings.json', () => {
+      home = buildClaudeHome(spec({ 'bar@mp1': true }));
+      const out = loadEnabledPlugins({ claudeHome: home, enabled: 'foo@mp1' });
+      expect(out.loadedKeys).toEqual(['foo@mp1']);
+    });
+
+    it('reads the env var by default', () => {
+      home = buildClaudeHome(spec({}));
+      process.env.BRIDGE_ENABLED_PLUGINS = 'bar@mp1';
+      const out = loadEnabledPlugins({ claudeHome: home });
+      expect(out.loadedKeys).toEqual(['bar@mp1']);
+    });
+
+    it('falls back to settings.json when empty', () => {
+      home = buildClaudeHome(spec({ 'foo@mp1': true }));
+      const out = loadEnabledPlugins({ claudeHome: home, enabled: ' , ' });
+      expect(out.loadedKeys).toEqual(['foo@mp1']);
+    });
+
+    it('still applies the allowlist and denylist', () => {
+      home = buildClaudeHome(spec({}));
+      const out = loadEnabledPlugins({
+        claudeHome: home,
+        enabled: 'foo@mp1,bar@mp1',
+        allowlist: 'foo@mp1,bar@mp1',
+        denylist: 'bar@mp1',
+      });
+      expect(out.loadedKeys).toEqual(['foo@mp1']);
+      expect(out.denied).toEqual(['bar@mp1']);
+    });
+
+    it('skips an explicit key that is not installed', () => {
+      home = buildClaudeHome(spec({}));
+      const out = loadEnabledPlugins({ claudeHome: home, enabled: 'foo@mp1,ghost@mp9' });
+      expect(out.loadedKeys).toEqual(['foo@mp1']);
+      expect(out.skipped).toEqual([{ key: 'ghost@mp9', reason: 'not in installer manifest' }]);
+    });
+  });
 });

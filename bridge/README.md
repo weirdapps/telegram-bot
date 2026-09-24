@@ -97,6 +97,7 @@ TELEGRAM_BOT_TOKEN=...                        # adds the Bot API input channel
 TELEGRAM_BRIDGE_BOT_TMPDIR=$HOME/.telegram/bot-inbox
 TELEGRAM_BRIDGE_DISABLE_SAVED_MESSAGES=true   # bot-only, no MTProto login
 
+BRIDGE_ENABLED_PLUGINS=                       # set = load exactly these, ignore settings.json
 BRIDGE_PLUGIN_ALLOWLIST=                      # unset = load every enabled plugin
 BRIDGE_PLUGIN_DENYLIST=                       # comma-separated name@marketplace
 
