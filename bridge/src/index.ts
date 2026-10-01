@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import { existsSync, readFileSync, promises as fs } from 'node:fs';
-import { TelegramUserClient, loadConfig, createLogger } from '../../src/index.js';
+import { TelegramUserClient, loadConfig, createLogger, ConfigError } from '../../src/index.js';
+import { isValidLogLevel } from '../../src/config/config.js';
 import type { Logger } from '../../src/logger/logger.js';
 import { askClaude } from './claude.js';
 import { StateStore } from './state.js';
@@ -30,6 +31,8 @@ import type { SdkPluginConfig } from '@anthropic-ai/claude-agent-sdk';
 import type { Channel, ChannelMessage } from './channels/channel.js';
 import { MtProtoChannel } from './channels/mtprotoChannel.js';
 import { BotApiChannel } from './channels/botApiChannel.js';
+import { startBrain } from './brain/brainMain.js';
+import { assertKnownProfile, isBrainProfile } from './brain/profile.js';
 
 interface BridgeRuntime {
   state: StateStore;
@@ -44,6 +47,25 @@ interface BridgeRuntime {
 }
 
 async function main(): Promise<void> {
+  // A typo must not start the general bridge (every plugin, bypassPermissions)
+  // on the brain bot's token.
+  assertKnownProfile();
+  // TELEGRAM_BRIDGE_PROFILE=brain: the read-only brain bot. Nothing below runs
+  // for it, and it reads none of the account's MTProto settings; unset, the
+  // general bridge starts exactly as before.
+  if (isBrainProfile()) {
+    const level = process.env.TELEGRAM_LOG_LEVEL || 'info';
+    if (!isValidLogLevel(level)) {
+      throw new ConfigError(
+        'TELEGRAM_LOG_LEVEL must be one of: trace|debug|info|warn|error|silent',
+        'TELEGRAM_LOG_LEVEL',
+      );
+    }
+    const voiceCfg = loadVoiceBridgeConfig();
+    const logger = createLogger(level);
+    await startBrain({ logger, voiceCfg });
+    return;
+  }
   const cfg = loadConfig();
   const voiceCfg = loadVoiceBridgeConfig();
   const logger = createLogger(cfg.logLevel);

@@ -84,6 +84,16 @@ export function isBrainProfile(env: NodeJS.ProcessEnv = process.env): boolean {
   return env.TELEGRAM_BRIDGE_PROFILE === 'brain';
 }
 
+/** Throws unless TELEGRAM_BRIDGE_PROFILE is unset, empty or exactly 'brain' (no trimming). */
+export function assertKnownProfile(env: NodeJS.ProcessEnv = process.env): void {
+  const value = env.TELEGRAM_BRIDGE_PROFILE;
+  if (value === undefined || value === '' || value === 'brain') return;
+  throw new BrainProfileError(
+    `TELEGRAM_BRIDGE_PROFILE must be unset (the general bridge) or 'brain', not ${JSON.stringify(value)}`,
+    'TELEGRAM_BRIDGE_PROFILE',
+  );
+}
+
 function need(env: NodeJS.ProcessEnv, name: string): string {
   const value = env[name]?.trim();
   if (!value) {

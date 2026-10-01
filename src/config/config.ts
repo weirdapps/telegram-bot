@@ -142,6 +142,6 @@ function isAbsolutePath(p: string): boolean {
   return false;
 }
 
-function isValidLogLevel(v: string): v is LogLevel {
+export function isValidLogLevel(v: string): v is LogLevel {
   return (VALID_LOG_LEVELS as ReadonlyArray<string>).includes(v);
 }

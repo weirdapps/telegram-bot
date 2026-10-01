@@ -188,6 +188,39 @@ show `state = running` with `active count = 1` and a non-empty `pid`.
 The repo's `run.sh` and the original `ProgramArguments` remain the right
 default for repos NOT in CloudStorage.
 
+## Brain profile
+
+`TELEGRAM_BRIDGE_PROFILE=brain` runs the same process as a second, read-only bot
+over the owner's second-brain store: per-subject context, `/new` to close a
+subject, streamed draft answers, voice notes. Design:
+`docs/superpowers/specs/2026-10-01-brain-bot-design.md`.
+
+- Tools, exactly: the second-brain MCP over local HTTP (27 tools), the
+  news-reader MCP (4), and `WebSearch`. `permissionMode: 'dontAsk'` denies
+  everything else, and no plugin loads.
+- A subject is one Claude session keyed by chat and topic (`chatId:threadId`),
+  stored at `TELEGRAM_BRIDGE_STATE_PATH`. With Threaded Mode on in BotFather,
+  each topic is its own subject.
+- Commands: `/new` (or `/clear`, or the 🆕 button), `/context`, `/voice`, `/help`.
+
+| Variable                             | Purpose                                                                                 |
+| ------------------------------------ | --------------------------------------------------------------------------------------- |
+| `TELEGRAM_BRIDGE_PROFILE=brain`      | Selects this profile; unset keeps the general bridge; any other value refuses to start. |
+| `TELEGRAM_BOT_TOKEN`                 | The brain bot's own token.                                                              |
+| `TELEGRAM_BRIDGE_STATE_PATH`         | The subject store, e.g. `~/.telegram-brain/subjects.json`.                              |
+| `TELEGRAM_BRIDGE_SYSTEM_PROMPT_FILE` | Private persona file, appended to `bridge/src/brain/prompts/brain-base.md`.             |
+| `CLAUDE_CONFIG_DIR`                  | Where transcripts go; set for the whole process.                                        |
+| `BRIDGE_BRAIN_MCP_URL`               | `http://127.0.0.1:8765/mcp`.                                                            |
+| `BRAIN_MCP_TOKEN_FILE`               | The bearer token file the second-brain HTTP server reads.                               |
+| `BRIDGE_NEWS_MCP_COMMAND`            | The news-reader MCP launcher.                                                           |
+
+`TELEGRAM_BRIDGE_ALLOWED_SENDER_IDS`, the seven voice variables and the Vertex
+variables are required as for the general bridge, `TELEGRAM_LOG_LEVEL` is
+optional (default `info`), and the MTProto variables are not used. Run it as its
+own unit from `bridge/systemd/telegram-brain.service.example`, which points
+dotenv at the brain env file (`DOTENV_CONFIG_PATH`) so the repo's `.env` never
+fills its gaps.
+
 ## Security posture
 
 By default the bridge runs the SDK in `bypassPermissions` mode (matches your

@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import {
   BRAIN_ALLOWED_TOOLS,
   BrainProfileError,
+  assertKnownProfile,
   buildBrainOptions,
   isBrainProfile,
   loadBrainProfile,
@@ -43,6 +44,28 @@ describe('isBrainProfile', () => {
     expect(isBrainProfile({ TELEGRAM_BRIDGE_PROFILE: 'brain' })).toBe(true);
     expect(isBrainProfile({ TELEGRAM_BRIDGE_PROFILE: 'general' })).toBe(false);
     expect(isBrainProfile({})).toBe(false);
+  });
+});
+
+describe('assertKnownProfile', () => {
+  it.each<[string, NodeJS.ProcessEnv]>([
+    ['unset', {}],
+    ['empty', { TELEGRAM_BRIDGE_PROFILE: '' }],
+    ['brain', { TELEGRAM_BRIDGE_PROFILE: 'brain' }],
+  ])('accepts %s', (_label, e) => {
+    expect(() => assertKnownProfile(e)).not.toThrow();
+  });
+
+  it.each(['Brain', ' brain ', 'general'])('refuses %j and names the value', (value) => {
+    let caught: unknown;
+    try {
+      assertKnownProfile({ TELEGRAM_BRIDGE_PROFILE: value });
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(BrainProfileError);
+    expect((caught as BrainProfileError).variable).toBe('TELEGRAM_BRIDGE_PROFILE');
+    expect((caught as BrainProfileError).message).toContain(JSON.stringify(value));
   });
 });
 

@@ -218,6 +218,12 @@ Voice modes:
 - `mirror` (default): voice reply when the input was a voice note, text otherwise.
 - `always`: always reply with a voice note.
 
+## Brain profile
+
+The bridge can also run a second, read-only bot over a second-brain store, with
+per-subject context and `/new` to close a subject. See `bridge/README.md`,
+"Brain profile".
+
 ## telegram-cli (standalone Telegram client)
 
 The package still ships the upstream standalone CLI for scripting or ad-hoc use.
