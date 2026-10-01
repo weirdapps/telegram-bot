@@ -172,18 +172,19 @@ export function buildBrainOptions(
         url: p.brainMcpUrl,
         // A literal placeholder, not a template literal: the SDK passes mcpServers to
         // the CLI as --mcp-config on its command line, and argv is world-readable. The
-        // token rides in the child env (owner-only) and the CLI expands it on connect.
+        // token rides in the child env (owner-only) and the CLI expands it at startup.
         headers: { Authorization: 'Bearer ${BRAIN_MCP_TOKEN}' },
         alwaysLoad: true,
         timeout: 90_000,
       },
-      [NEWS_SERVER]: { type: 'stdio', command: p.newsMcpCommand, args: [] },
+      [NEWS_SERVER]: { type: 'stdio', command: p.newsMcpCommand, args: [], timeout: 90_000 },
     },
     plugins: [],
     settingSources: [],
     systemPrompt: p.systemPrompt,
     includePartialMessages: true,
     maxTurns: 25,
+    // The inline cleanupPeriodDays keeps the CLI's retention sweep running under settingSources [].
     settings: { promptCacheTtl: '1h', cleanupPeriodDays: 30 },
     // Per turn, never by mutating process.env: two subjects can run at once, and
     // only the fallback retry moves to another region.

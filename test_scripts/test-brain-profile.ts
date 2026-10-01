@@ -175,7 +175,7 @@ describe('buildBrainOptions', () => {
     expect(Object.keys(o.mcpServers ?? {})).toEqual(['second-brain', 'news-reader']);
     // The SDK passes mcpServers to the CLI as --mcp-config on its command line, and
     // argv is world-readable; the child env is owner-only, so the token travels there
-    // and the CLI expands the placeholder when it connects.
+    // and the CLI expands the placeholder at startup.
     expect(o.mcpServers?.['second-brain']).toEqual({
       type: 'http',
       url: 'http://127.0.0.1:8765/mcp',
@@ -185,10 +185,12 @@ describe('buildBrainOptions', () => {
     });
     expect(o.env?.BRAIN_MCP_TOKEN).toBe(token);
     expect(JSON.stringify(o.mcpServers)).not.toContain(token);
+    // The same per-call timeout: a hung news tool fails before the 120 s silence watchdog.
     expect(o.mcpServers?.['news-reader']).toEqual({
       type: 'stdio',
       command: '/opt/news/run_mcp.sh',
       args: [],
+      timeout: 90_000,
     });
   });
 
