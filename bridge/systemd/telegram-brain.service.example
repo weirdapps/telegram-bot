@@ -29,6 +29,8 @@ RestartSec=10
 # and OnFailure= fires once, when the start limit in [Unit] gives up.
 RestartMode=direct
 MemoryMax=1500M
+# An OOM kill of one CLI child then costs that turn an "Error:" reply instead of stopping the whole bot.
+OOMPolicy=continue
 NoNewPrivileges=yes
 StandardOutput=append:%h/logs/telegram-brain.log
 StandardError=append:%h/logs/telegram-brain.err
