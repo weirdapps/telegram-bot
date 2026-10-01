@@ -175,6 +175,20 @@ describe('BrainApp', () => {
     expect((await store.get('500:0'))?.questions).toBe(2);
   });
 
+  it('keeps a long follow-up answer that mentions "usage policies" in the subject\'s session', async () => {
+    const text = `The committee approved the new AI usage policies on 12 September. ${'Alice owns the rollout. '.repeat(20)}`;
+    const { a, q } = app(
+      answer('The committee met on 12 September.', 'id-1'),
+      answer(text, 'id-1'),
+    );
+    await a.onText(message('When did the AI committee meet?'));
+    await a.onText(message('What did it decide?'));
+    expect(q.calls).toHaveLength(2);
+    expect(q.calls[1]?.options.resume).toBe('id-1');
+    expect(out.last().text).toBe(text.trim());
+    expect((await store.get('500:0'))?.sessionId).toBe('id-1');
+  });
+
   it('/new closes the subject, deletes its transcript and says what closed', async () => {
     const { a } = app(answer('Alice.', 'id-1'));
     await a.onText(message('Who owns the budget?'));

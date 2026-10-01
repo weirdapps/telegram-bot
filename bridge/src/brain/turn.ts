@@ -3,8 +3,8 @@
 // One brain turn: resume the subject's session, or rebuild it from the subject
 // log when it cannot be resumed; stream progress; refuse to answer when the
 // brain MCP is not connected; retry once in a fresh session on silence, on a
-// missing session, or on a likely policy refusal (then on the fallback model,
-// in its own region).
+// missing session, or on a short answer that reads like a policy refusal (then
+// on the fallback model, in its own region).
 
 import { randomUUID } from 'node:crypto';
 import type {
@@ -18,6 +18,8 @@ import { BRAIN_ALLOWED_TOOLS, BRAIN_SERVER, type TurnPlan } from './profile.js';
 import { cut, rebuildSeed, type Subject } from './subjects.js';
 
 export const SILENCE_MS = 120_000;
+/** A spurious refusal is a sentence or two; a longer answer that uses a marker phrase is an answer. */
+export const REFUSAL_MAX_CHARS = 400;
 
 export type TurnEvent =
   { kind: 'tool'; name: string; detail: string } | { kind: 'text'; text: string };
@@ -109,6 +111,18 @@ function isInit(m: SDKMessage): m is SDKSystemMessage {
 
 function isMissingSession(text: string): boolean {
   return /no conversation found|session[^\n]{0,40}not found/i.test(text);
+}
+
+/**
+ * The general bridge's refusal heuristic, held to short answers: here a false positive moves the
+ * subject to a fresh session rebuilt from its log. A silent refusal has no text, so it still counts.
+ */
+function isRefusal(r: SDKResultMessage): boolean {
+  return (
+    r.subtype === 'success' &&
+    (r.result ?? '').trim().length <= REFUSAL_MAX_CHARS &&
+    isLikelyPolicyRefusal(r)
+  );
 }
 
 function reasonOf(signal: AbortSignal): Error {
@@ -250,7 +264,7 @@ export async function runBrainTurn(input: TurnInput, deps: TurnDeps): Promise<Tu
     ) {
       deps.warn('the stored session could not be resumed; rebuilding it from the subject log');
       second = fresh(false);
-    } else if (isLikelyPolicyRefusal(r)) {
+    } else if (isRefusal(r)) {
       deps.warn('likely policy refusal; retrying once on the fallback model');
       second = fresh(true);
     } else {

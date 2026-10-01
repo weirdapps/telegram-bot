@@ -14,6 +14,7 @@ import {
   delta,
   failure,
   init,
+  msg,
   scriptedQuery,
   success,
   toolUse,
@@ -142,6 +143,43 @@ describe('runBrainTurn', () => {
     expect(q.calls[1]?.options.model).toBe('fallback-model');
     expect(q.calls[1]?.options.env).toEqual({ CLOUD_ML_REGION: 'fallback-region' });
     expect(out).toMatchObject({ text: 'Here it is.', usedFallback: true, sessionId: 'id-2' });
+  });
+
+  it('keeps a long answer that mentions a refusal phrase, in the session it resumed', async () => {
+    const text = `The committee approved the new AI usage policies on 12 September. ${'Alice owns the rollout. '.repeat(20)}`;
+    const q = scriptedQuery(answer(text, 'stored'));
+    const out = await runBrainTurn(
+      { prompt: 'what did it decide?', subject, abort: live() },
+      turnDeps(q.fn),
+    );
+    expect(q.calls).toHaveLength(1);
+    expect(out).toMatchObject({ text, sessionId: 'stored', rebuilt: false, usedFallback: false });
+  });
+
+  it('reads a refusal phrase as a refusal only in an answer of at most 400 characters', async () => {
+    // 24 characters of refusal, padded to the length asked for.
+    const reply = (length: number) => `I can't help with that. ${'x'.repeat(length - 24)}`;
+    const short = scriptedQuery(answer(`\n${reply(400)}  `, 'id-1'), answer('Here it is.', 'id-2'));
+    await runBrainTurn({ prompt: 'q', subject: undefined, abort: live() }, turnDeps(short.fn));
+    expect(short.calls).toHaveLength(2);
+    const long = scriptedQuery(answer(reply(401), 'id-1'));
+    const out = await runBrainTurn(
+      { prompt: 'q', subject: undefined, abort: live() },
+      turnDeps(long.fn),
+    );
+    expect(long.calls).toHaveLength(1);
+    expect(out.usedFallback).toBe(false);
+  });
+
+  it('still retries a silent refusal: no text, no cost, under two seconds', async () => {
+    const silent = msg({ ...(success('', 'id-1') as object), total_cost_usd: 0 });
+    const q = scriptedQuery([init(), silent], answer('Here it is.', 'id-2'));
+    const out = await runBrainTurn(
+      { prompt: 'q', subject: undefined, abort: live() },
+      turnDeps(q.fn),
+    );
+    expect(q.calls[1]?.options.model).toBe('fallback-model');
+    expect(out).toMatchObject({ text: 'Here it is.', usedFallback: true });
   });
 
   it('returns the streamed text when the step limit is hit', async () => {
