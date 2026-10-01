@@ -25,7 +25,7 @@ interface Sent {
 
 class FakeOut implements BrainOutput {
   sent: Sent[] = [];
-  drafts: Array<{ threadId: number | undefined; text: string }> = [];
+  drafts: Array<{ threadId: number | undefined; draftId: number; text: string }> = [];
   callbacks: Array<{ id: string; text: string | undefined }> = [];
 
   async sendRich(
@@ -55,10 +55,17 @@ class FakeOut implements BrainOutput {
   async sendDraft(
     _chatId: string,
     threadId: number | undefined,
-    _draftId: number,
+    draftId: number,
     text: string,
   ): Promise<void> {
-    this.drafts.push({ threadId, text });
+    this.drafts.push({ threadId, draftId, text });
+  }
+
+  /** The draft id of the n-th turn to show a draft, counting from 0. */
+  draftId(n: number): number {
+    const id = [...new Set(this.drafts.map((d) => d.draftId))][n];
+    if (id === undefined) throw new Error(`no draft for turn ${n}`);
+    return id;
   }
 
   async answerCallback(id: string, text?: string): Promise<void> {
@@ -163,7 +170,7 @@ describe('BrainApp', () => {
       text: 'Alice owns it.',
       opts: { threadId: 7, button: { text: NEW_SUBJECT_BUTTON, data: 'new:500:7' } },
     });
-    expect(out.drafts[0]).toEqual({ threadId: 7, text: '' });
+    expect(out.drafts[0]).toMatchObject({ threadId: 7, text: '' });
     expect((await store.get('500:7'))?.sessionId).toBe('id-1');
   });
 
@@ -259,11 +266,11 @@ describe('BrainApp', () => {
     const { a } = app({ gate: gate.promise, messages: answer('too late', 'id-1') });
     const p = a.onText(message('long question'));
     await tick();
-    a.onStop({ chatId: '500', draftId: 1 });
+    a.onStop({ chatId: '500', draftId: out.draftId(0) });
     await p;
     expect(out.last().text).toBe('Stopped.');
     expect(await store.get('500:0')).toBeUndefined();
-    a.onStop({ chatId: '500', draftId: 1 });
+    a.onStop({ chatId: '500', draftId: out.draftId(0) });
   });
 
   it('/new during a turn cancels it quietly and closes', async () => {
@@ -484,26 +491,47 @@ describe('BrainApp', () => {
       { gate: second.promise, messages: answer('second', 'id-1') },
       { gate: third.promise, messages: answer('third', 'id-1') },
     );
-    // Each turn shows its own draft: ids 1, 2 and 3 here.
+    // Each turn shows its own draft, under its own id.
     await a.onText(message('first question'));
     const p2 = a.onText(message('second question'));
     await tick();
-    a.onStop({ chatId: '500', draftId: 1 }); // tapped as the first answer landed, handled late
+    a.onStop({ chatId: '500', draftId: out.draftId(0) }); // tapped as the first answer landed, handled late
     second.resolve();
     await p2;
     expect(out.last().text).toBe('second');
     const p3 = a.onText(message('third question'));
     await tick();
-    a.onStop({ chatId: '500', draftId: 3 });
+    a.onStop({ chatId: '500', draftId: out.draftId(2) });
     await p3;
     expect(out.last().text).toBe('Stopped.');
     expect((await store.get('500:0'))?.questions).toBe(2);
   });
 
+  it('starts its draft ids at random, so a Stop queued before a restart stops no new turn', async () => {
+    const random = vi.spyOn(Math, 'random').mockReturnValue(0); // the lowest start there is
+    try {
+      const gate = deferred();
+      const { a } = app({ gate: gate.promise, messages: answer('Alice owns it.', 'id-1') });
+      const p = a.onText(message('Who owns the budget?'));
+      await tick();
+      a.onStop({ chatId: '500', draftId: 1 }); // the first turn's draft before the restart
+      gate.resolve();
+      await p;
+      expect(out.last().text).toBe('Alice owns it.');
+      expect(out.draftId(0)).toBeGreaterThan(1);
+      random.mockReturnValue(1 - 2 ** -53); // the highest
+      const later = app(answer('ok', 'id-2'));
+      await later.a.onText(message('q', { threadId: 9 }));
+      expect(out.draftId(1)).toBeLessThanOrEqual(2 ** 30);
+    } finally {
+      random.mockRestore();
+    }
+  });
+
   it('a Stop after the turn returned does not hide a delivery failure', async () => {
     const { a } = app(answer('Alice owns it.', 'id-1'));
     out.sendRich = async () => {
-      a.onStop({ chatId: '500', draftId: 1 }); // the owner taps Stop as the answer goes out
+      a.onStop({ chatId: '500', draftId: out.draftId(0) }); // the owner taps Stop as the answer goes out
       throw new Error('Telegram is down');
     };
     await a.onText(message('Who owns the budget?'));

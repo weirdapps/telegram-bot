@@ -135,7 +135,9 @@ export function promptFor(q: Question, voiceMode: VoiceMode): string {
 export class BrainApp {
   private readonly queue: KeyedQueue;
   private readonly running = new Map<string, { abort: AbortController; draftId: number }>();
-  private draftSeq = 0;
+  // From a random start in [1, 2^30): a Stop that Telegram queued while the bot was down then
+  // cannot match the first draft after the restart.
+  private draftSeq = 1 + Math.floor(Math.random() * (2 ** 30 - 1));
 
   constructor(private readonly d: BrainAppDeps) {
     this.queue = new KeyedQueue(d.maxConcurrent ?? 2);
