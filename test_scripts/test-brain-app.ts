@@ -14,7 +14,18 @@ import { DRAFT_STOP_GRACE_MS } from '../bridge/src/brain/draftStream.js';
 import { SubjectStore } from '../bridge/src/brain/subjects.js';
 import type { BotApiChannel } from '../bridge/src/channels/botApiChannel.js';
 import type { CallbackEvent, ChannelMessage, SendOptions } from '../bridge/src/channels/channel.js';
-import { answer, init, planOptions, scriptedQuery, success, type Run } from './brainFakes.js';
+import {
+  answer,
+  delta,
+  failure,
+  init,
+  planOptions,
+  scriptedQuery,
+  success,
+  toolUse,
+  usage,
+  type Run,
+} from './brainFakes.js';
 
 interface Sent {
   kind: 'rich' | 'plain' | 'voice';
@@ -430,6 +441,42 @@ describe('BrainApp', () => {
     await a.onText(message('/new'));
     expect(deleteSession.mock.calls).toEqual([['id-2']]);
     expect(log.warn).not.toHaveBeenCalled();
+  });
+
+  it('a step-limit stop with no text says so, asks for a narrower question, stores nothing', async () => {
+    const { a } = app([init(), usage(10), failure('error_max_turns', [], 'id-1')]);
+    await a.onText(message('Everything about the budget, ever'));
+    expect(out.last().text).toBe(
+      'The turn hit the 25-step limit before writing an answer, and nothing was stored. Please ask a narrower question.',
+    );
+    expect(await store.get('500:0')).toBeUndefined();
+  });
+
+  it('logs each answered turn: subject, time, cost, context, flags and tools, never the text', async () => {
+    const { a } = app([
+      init(),
+      toolUse('mcp__second-brain__recall', { query: 'budget owner' }),
+      usage(1200, 800, 100),
+      delta('Alice owns it.'),
+      success('Alice owns it.', 'id-1'),
+    ]);
+    await a.onText(message('Who owns the budget?', { threadId: 7 }));
+    expect(log.info.mock.calls).toEqual([
+      [
+        {
+          key: '500:7',
+          elapsedMs: expect.any(Number),
+          costUsd: 0.01,
+          contextTokens: 2100,
+          rebuilt: false,
+          usedFallback: false,
+          hitMaxTurns: false,
+          tools: 1,
+        },
+        'answered',
+      ],
+    ]);
+    expect(JSON.stringify(log.info.mock.calls)).not.toMatch(/budget|Alice/);
   });
 
   it('an empty answer stores nothing and says so', async () => {

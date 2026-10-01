@@ -480,6 +480,8 @@ export class BrainApp {
     // A question with no subject yet, and the session of its latest attempt: what a Stop keeps.
     let firstTurn = false;
     let session: string | undefined;
+    const startedAt = Date.now();
+    let tools = 0;
     draft.start();
     try {
       // Read inside the try: an unreadable subject store still gets the owner a reply.
@@ -496,8 +498,14 @@ export class BrainApp {
             if (session !== undefined) this.remember(key, session);
             return this.d.turn.buildOptions(plan, ctl);
           },
-          onEvent: (e) =>
-            e.kind === 'tool' ? draft.tool(e.name, e.detail) : draft.setText(e.text),
+          onEvent: (e) => {
+            if (e.kind === 'tool') {
+              tools += 1;
+              draft.tool(e.name, e.detail);
+            } else {
+              draft.setText(e.text);
+            }
+          },
         },
       );
       turnDone = true;
@@ -508,10 +516,13 @@ export class BrainApp {
       }
       const answer = outcome.text.trim();
       if (answer === '') {
-        // An empty turn never replaces the stored session (spec 5.2).
+        // An empty turn never replaces the stored session (spec 5.2). After a step-limit stop,
+        // the same question would only hit the limit again.
         await this.d.out.sendPlain(
           q.chatId,
-          'The answer came back empty, and nothing was stored. Please ask again.',
+          outcome.hitMaxTurns
+            ? 'The turn hit the 25-step limit before writing an answer, and nothing was stored. Please ask a narrower question.'
+            : 'The answer came back empty, and nothing was stored. Please ask again.',
           opts,
         );
         return;
@@ -536,6 +547,20 @@ export class BrainApp {
         `${CALLBACK_PREFIX}${key}:${subjectTag(record)}`,
         [...header, ...(header.length > 0 ? [''] : []), answer, ...footer].join('\n'),
         voiceMode,
+      );
+      // No question or answer text: the journal shows that it answered, how fast, at what cost.
+      this.d.log.info(
+        {
+          key,
+          elapsedMs: Date.now() - startedAt,
+          costUsd: outcome.costUsd,
+          contextTokens: outcome.contextTokens,
+          rebuilt: outcome.rebuilt,
+          usedFallback: outcome.usedFallback,
+          hitMaxTurns: outcome.hitMaxTurns,
+          tools,
+        },
+        'answered',
       );
     } catch (err) {
       await stopDraft();
