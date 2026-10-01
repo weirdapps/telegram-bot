@@ -35,7 +35,7 @@ interface SubjectFile {
 
 const VOICE_MODES: ReadonlySet<string> = new Set(['mirror', 'always', 'off']);
 
-function cut(s: string, max: number): string {
+export function cut(s: string, max: number): string {
   if (s.length <= max) return s;
   // Never keep only the high half of a surrogate pair (an emoji): that is invalid UTF-16.
   const last = s.charCodeAt(max - 2);
