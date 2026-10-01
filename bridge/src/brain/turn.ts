@@ -126,7 +126,8 @@ function isRefusal(r: SDKResultMessage): boolean {
   if (r.subtype !== 'success') return false;
   const text = (r.result ?? '').trim();
   if (text === '') return isLikelyPolicyRefusal(r);
-  const lower = text.toLowerCase();
+  // A typographic apostrophe (U+2019, U+02BC) reads as the straight one in the markers.
+  const lower = text.toLowerCase().replace(/[\u2019\u02bc]/g, "'");
   return text.length <= REFUSAL_MAX_CHARS && REFUSAL_MARKERS.some((m) => lower.includes(m));
 }
 

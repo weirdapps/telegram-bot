@@ -134,6 +134,9 @@ describe('runBrainTurn', () => {
   it.each([
     "I can't help with that: it violates Anthropic's usage policies.",
     'That request falls under the Anthropic usage policy, so I will not answer it.',
+    // The typographic apostrophes a model may write instead of a straight one.
+    'That violates Anthropic\u2019s usage policies.',
+    'That violates Anthropic\u02bcs usage policies.',
   ])(
     "retries a short answer naming Anthropic's usage policy once, on the fallback model and its region: %j",
     async (refusal) => {
