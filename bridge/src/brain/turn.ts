@@ -3,8 +3,9 @@
 // One brain turn: resume the subject's session, or rebuild it from the subject
 // log when it cannot be resumed; stream progress; refuse to answer when the
 // brain MCP is not connected; retry once in a fresh session on silence, on a
-// missing session, or on a short answer that reads like a policy refusal (then
-// on the fallback model, in its own region).
+// missing session, or on a likely policy refusal: a silent one, or a short
+// answer naming Anthropic's usage policy (then on the fallback model, in its
+// own region).
 
 import { randomUUID } from 'node:crypto';
 import type {
@@ -18,8 +19,11 @@ import { BRAIN_ALLOWED_TOOLS, BRAIN_SERVER, type TurnPlan } from './profile.js';
 import { cut, rebuildSeed, type Subject } from './subjects.js';
 
 export const SILENCE_MS = 120_000;
-/** A spurious refusal is a sentence or two; a longer answer that uses a marker phrase answers. */
+/** A spurious refusal is a sentence or two; a longer answer that names the policy answers. */
 export const REFUSAL_MAX_CHARS = 400;
+// Not the general bridge's generic declines ("i can't help with that" and the rest): the base
+// prompt has the bot decline a send or a forward in exactly those words.
+const REFUSAL_MARKERS = ["anthropic's usage polic", 'anthropic usage polic'];
 
 export type TurnEvent =
   { kind: 'tool'; name: string; detail: string } | { kind: 'text'; text: string };
@@ -114,16 +118,16 @@ function isMissingSession(text: string): boolean {
 }
 
 /**
- * The general bridge's refusal heuristic, held to short answers: here a false positive moves
- * the subject to a fresh session rebuilt from its log. A silent refusal has no text, so it
- * still counts.
+ * A likely spurious refusal: a silent one (no text, no cost, under 2 s, the general bridge's
+ * rule), or a short answer that names Anthropic's usage policy. Nothing else counts: a false
+ * positive moves the subject to a fresh session rebuilt from its log.
  */
 function isRefusal(r: SDKResultMessage): boolean {
-  return (
-    r.subtype === 'success' &&
-    (r.result ?? '').trim().length <= REFUSAL_MAX_CHARS &&
-    isLikelyPolicyRefusal(r)
-  );
+  if (r.subtype !== 'success') return false;
+  const text = (r.result ?? '').trim();
+  if (text === '') return isLikelyPolicyRefusal(r);
+  const lower = text.toLowerCase();
+  return text.length <= REFUSAL_MAX_CHARS && REFUSAL_MARKERS.some((m) => lower.includes(m));
 }
 
 function reasonOf(signal: AbortSignal): Error {

@@ -95,6 +95,8 @@ const asOutput = (c: BotApiChannel): BrainOutput => c;
 void asOutput;
 
 const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
+/** A short answer naming Anthropic's usage policy: the brain retries it on the fallback tier. */
+const REFUSAL = "I can't help with that: it violates Anthropic's usage policies.";
 
 const OWNER = '1001';
 const message = (text: string, over: Partial<ChannelMessage> = {}): ChannelMessage => ({
@@ -215,8 +217,9 @@ describe('BrainApp', () => {
     expect((await store.get('500:0'))?.questions).toBe(2);
   });
 
-  it('keeps a long follow-up answer that mentions "usage policies" in the subject\'s session', async () => {
-    const text = `The committee approved the new AI usage policies on 12 September. ${'Alice owns the rollout. '.repeat(20)}`;
+  it('keeps a short follow-up answer that mentions "usage policies" in the subject\'s session', async () => {
+    const text =
+      'The committee approved the new AI usage policies on 12 September; Alice owns the rollout.';
     const { a, q } = app(
       answer('The committee met on 12 September.', 'id-1'),
       answer(text, 'id-1'),
@@ -404,8 +407,8 @@ describe('BrainApp', () => {
   it('a close deletes the transcript of every session its turns started, then forgets them', async () => {
     const { a } = app(
       answer('The committee met on 12 September.', 'id-1'),
-      // Short, with a refusal phrase: retried on the fallback tier, in a new session.
-      answer('The committee approved the new AI usage policies on 12 September.', 'id-1'),
+      // A short refusal that names the policy: retried on the fallback tier, in a new session.
+      answer(REFUSAL, 'id-1'),
       answer('It approved the new AI usage policies.', 'id-2'),
       answer('A fresh subject.', 'id-3'),
     );
@@ -425,7 +428,7 @@ describe('BrainApp', () => {
     await before.a.onText(message('When did the AI committee meet?'));
     store = new SubjectStore(join(dir, 'subjects.json')); // a new process reads the file afresh
     const after = app(
-      answer('The committee approved the new AI usage policies.', 'stored-1'),
+      answer(REFUSAL, 'stored-1'),
       answer('It approved the new AI usage policies.', 'id-1'),
     );
     await after.a.onText(message('What did it decide?'));
@@ -435,7 +438,7 @@ describe('BrainApp', () => {
   });
 
   it('a close skips, without a warning, a session no transcript was written for', async () => {
-    const { a } = app(answer("I can't help with that.", 'id-1'), answer('Here it is.', 'id-2'));
+    const { a } = app(answer(REFUSAL, 'id-1'), answer('Here it is.', 'id-2'));
     await a.onText(message('question'));
     sessionExists = async (id) => id !== 'id-1';
     await a.onText(message('/new'));

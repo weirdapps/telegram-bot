@@ -131,22 +131,41 @@ describe('runBrainTurn', () => {
     expect(out.rebuilt).toBe(true);
   });
 
-  it('retries a likely policy refusal once on the fallback model and its region', async () => {
-    const q = scriptedQuery(
-      answer("I can't help with that.", 'id-1'),
-      answer('Here it is.', 'id-2'),
-    );
-    const out = await runBrainTurn(
-      { prompt: 'q', subject: undefined, abort: live() },
-      turnDeps(q.fn),
-    );
-    expect(q.calls[1]?.options.model).toBe('fallback-model');
-    expect(q.calls[1]?.options.env).toEqual({ CLOUD_ML_REGION: 'fallback-region' });
-    expect(out).toMatchObject({ text: 'Here it is.', usedFallback: true, sessionId: 'id-2' });
-  });
+  it.each([
+    "I can't help with that: it violates Anthropic's usage policies.",
+    'That request falls under the Anthropic usage policy, so I will not answer it.',
+  ])(
+    "retries a short answer naming Anthropic's usage policy once, on the fallback model and its region: %j",
+    async (refusal) => {
+      const q = scriptedQuery(answer(refusal, 'id-1'), answer('Here it is.', 'id-2'));
+      const out = await runBrainTurn(
+        { prompt: 'q', subject: undefined, abort: live() },
+        turnDeps(q.fn),
+      );
+      expect(q.calls[1]?.options.model).toBe('fallback-model');
+      expect(q.calls[1]?.options.env).toEqual({ CLOUD_ML_REGION: 'fallback-region' });
+      expect(out).toMatchObject({ text: 'Here it is.', usedFallback: true, sessionId: 'id-2' });
+    },
+  );
 
-  it('keeps a long answer that mentions a refusal phrase, in the session it resumed', async () => {
-    const text = `The committee approved the new AI usage policies on 12 September. ${'Alice owns the rollout. '.repeat(20)}`;
+  it.each([
+    // The base prompt has the bot decline a send or a forward in words like these.
+    "I can't help with that: I can only read your store.",
+    "I'm unable to assist with sending mail: I only read it.",
+    // 89 characters that mention usage policies, from the final review's probe.
+    'The committee approved the new AI usage policies on 12 September; Alice owns the rollout.',
+  ])(
+    'keeps a short answer with a generic decline or "usage policies", in its session: %j',
+    async (text) => {
+      const q = scriptedQuery(answer(text, 'stored'));
+      const out = await runBrainTurn({ prompt: 'q', subject, abort: live() }, turnDeps(q.fn));
+      expect(q.calls).toHaveLength(1);
+      expect(out).toMatchObject({ text, sessionId: 'stored', rebuilt: false, usedFallback: false });
+    },
+  );
+
+  it("keeps a long answer that names Anthropic's usage policies, in the session it resumed", async () => {
+    const text = `Anthropic's usage policies came up twice in the September thread. ${'Alice owns the rollout. '.repeat(20)}`;
     const q = scriptedQuery(answer(text, 'stored'));
     const out = await runBrainTurn(
       { prompt: 'what did it decide?', subject, abort: live() },
@@ -156,9 +175,9 @@ describe('runBrainTurn', () => {
     expect(out).toMatchObject({ text, sessionId: 'stored', rebuilt: false, usedFallback: false });
   });
 
-  it('reads a refusal phrase as a refusal only in an answer of at most 400 characters', async () => {
-    // 24 characters of refusal, padded to the length asked for.
-    const reply = (length: number) => `I can't help with that. ${'x'.repeat(length - 24)}`;
+  it('reads the policy as a refusal only in an answer of at most 400 characters', async () => {
+    const head = "That violates Anthropic's usage policies. ";
+    const reply = (length: number) => `${head}${'x'.repeat(length - head.length)}`;
     const short = scriptedQuery(answer(`\n${reply(400)}  `, 'id-1'), answer('Here it is.', 'id-2'));
     await runBrainTurn({ prompt: 'q', subject: undefined, abort: live() }, turnDeps(short.fn));
     expect(short.calls).toHaveLength(2);
