@@ -452,7 +452,10 @@ export class BrainApp {
       );
       return;
     }
-    this.d.log.error({ err: errorText(err) }, 'brain turn failed');
+    this.d.log.error(
+      { err: errorText(err) },
+      signal ? 'brain turn failed' : 'reply failed after the turn',
+    );
     await this.d.out.sendPlain(q.chatId, `Error: ${errorText(err)}`, opts);
   }
 

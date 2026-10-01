@@ -485,6 +485,19 @@ describe('BrainApp', () => {
     expect((await store.get('500:0'))?.questions).toBe(1);
   });
 
+  it('logs a failed turn and a reply that failed after it differently', async () => {
+    const { a } = app(new Error('model unavailable'), answer('Alice owns it.', 'id-1'));
+    await a.onText(message('first?'));
+    out.sendRich = async () => {
+      throw new Error('Telegram is down');
+    };
+    await a.onText(message('second?'));
+    expect(log.error.mock.calls).toEqual([
+      [{ err: 'model unavailable' }, 'brain turn failed'],
+      [{ err: 'Telegram is down' }, 'reply failed after the turn'],
+    ]);
+  });
+
   it('a failed button acknowledgement still closes the subject', async () => {
     const { a } = app(answer('A', 'id-1'));
     await a.onText(message('question'));
