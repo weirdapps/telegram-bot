@@ -131,10 +131,15 @@ export function loadBrainProfile(
   };
 }
 
-function childEnv(env: NodeJS.ProcessEnv, region: string | undefined): Record<string, string> {
+function childEnv(
+  env: NodeJS.ProcessEnv,
+  region: string | undefined,
+  brainMcpToken: string,
+): Record<string, string> {
   const out: Record<string, string> = {};
   for (const [key, value] of Object.entries(env)) if (value !== undefined) out[key] = value;
   if (region !== undefined) out.CLOUD_ML_REGION = region;
+  out.BRAIN_MCP_TOKEN = brainMcpToken;
   return out;
 }
 
@@ -155,7 +160,10 @@ export function buildBrainOptions(
       [BRAIN_SERVER]: {
         type: 'http',
         url: p.brainMcpUrl,
-        headers: { Authorization: `Bearer ${p.brainMcpToken}` },
+        // A literal placeholder, not a template literal: the SDK passes mcpServers to
+        // the CLI as --mcp-config on its command line, and argv is world-readable. The
+        // token rides in the child env (owner-only) and the CLI expands it on connect.
+        headers: { Authorization: 'Bearer ${BRAIN_MCP_TOKEN}' },
         alwaysLoad: true,
         timeout: 90_000,
       },
@@ -169,7 +177,7 @@ export function buildBrainOptions(
     settings: { promptCacheTtl: '1h', cleanupPeriodDays: 30 },
     // Per turn, never by mutating process.env: two subjects can run at once, and
     // only the fallback retry moves to another region.
-    env: childEnv(env, plan.region),
+    env: childEnv(env, plan.region, p.brainMcpToken),
     ...(plan.resume !== undefined ? { resume: plan.resume } : {}),
     ...(plan.sessionId !== undefined ? { sessionId: plan.sessionId } : {}),
     ...(plan.model !== undefined ? { model: plan.model } : {}),

@@ -114,6 +114,24 @@ describe('buildBrainOptions', () => {
     expect(o.includePartialMessages).toBe(true);
     expect(o.systemPrompt).toBe('prompt');
     expect(o.settings).toEqual({ promptCacheTtl: '1h', cleanupPeriodDays: 30 });
+    // Exactly these keys, so agents, extraArgs, canUseTool, disallowedTools or a
+    // permission override cannot be added unseen.
+    expect(Object.keys(o).sort()).toEqual([
+      'abortController',
+      'allowedTools',
+      'cwd',
+      'env',
+      'includePartialMessages',
+      'maxTurns',
+      'mcpServers',
+      'permissionMode',
+      'plugins',
+      'settingSources',
+      'settings',
+      'strictMcpConfig',
+      'systemPrompt',
+      'tools',
+    ]);
   });
 
   it('allowlists 27 brain tools, 4 news tools and web search, and nothing that writes or fetches', () => {
@@ -126,15 +144,24 @@ describe('buildBrainOptions', () => {
     }
   });
 
-  it('reaches the brain over HTTP with the bearer token and news over stdio', () => {
-    const o = buildBrainOptions(profile, {}, new AbortController(), {});
+  it('reaches the brain over HTTP with the bearer token kept off the command line, and news over stdio', () => {
+    const token = 'brain-token-0123456789';
+    const o = buildBrainOptions({ ...profile, brainMcpToken: token }, {}, new AbortController(), {
+      BRAIN_MCP_TOKEN: 'inherited',
+    });
+    expect(Object.keys(o.mcpServers ?? {})).toEqual(['second-brain', 'news-reader']);
+    // The SDK passes mcpServers to the CLI as --mcp-config on its command line, and
+    // argv is world-readable; the child env is owner-only, so the token travels there
+    // and the CLI expands the placeholder when it connects.
     expect(o.mcpServers?.['second-brain']).toEqual({
       type: 'http',
       url: 'http://127.0.0.1:8765/mcp',
-      headers: { Authorization: 'Bearer tok' },
+      headers: { Authorization: 'Bearer ${BRAIN_MCP_TOKEN}' },
       alwaysLoad: true,
       timeout: 90_000,
     });
+    expect(o.env?.BRAIN_MCP_TOKEN).toBe(token);
+    expect(JSON.stringify(o.mcpServers)).not.toContain(token);
     expect(o.mcpServers?.['news-reader']).toEqual({
       type: 'stdio',
       command: '/opt/news/run_mcp.sh',
@@ -154,15 +181,30 @@ describe('buildBrainOptions', () => {
     );
     expect(fresh.sessionId).toBe('n1');
     expect(fresh.model).toBe('fb');
-    expect(fresh.env).toEqual({ CLOUD_ML_REGION: 'europe-west1', KEEP: 'x' });
+    expect(fresh.env).toEqual({
+      CLOUD_ML_REGION: 'europe-west1',
+      KEEP: 'x',
+      BRAIN_MCP_TOKEN: 'tok',
+    });
+  });
+
+  it('swaps the region in a copy, never in the env it was given', () => {
+    const e: NodeJS.ProcessEnv = { CLOUD_ML_REGION: 'eu' };
+    const o = buildBrainOptions(profile, { region: 'europe-west1' }, new AbortController(), e);
+    expect(o.env?.CLOUD_ML_REGION).toBe('europe-west1');
+    expect(o.env).not.toBe(e);
+    expect(e).toStrictEqual({ CLOUD_ML_REGION: 'eu' });
   });
 
   it('passes the cwd and the abort controller through, and keeps the region and model the env sets', () => {
     const abort = new AbortController();
-    const o = buildBrainOptions(profile, { resume: 's1' }, abort, { CLOUD_ML_REGION: 'eu' });
+    const o = buildBrainOptions(profile, { resume: 's1' }, abort, {
+      CLOUD_ML_REGION: 'eu',
+      ANTHROPIC_MODEL: 'm',
+    });
     expect(o.cwd).toBe('/c');
     expect(o.abortController).toBe(abort);
-    expect(o.env).toEqual({ CLOUD_ML_REGION: 'eu' });
+    expect(o.env).toEqual({ CLOUD_ML_REGION: 'eu', ANTHROPIC_MODEL: 'm', BRAIN_MCP_TOKEN: 'tok' });
     expect(o.model).toBeUndefined();
   });
 });
