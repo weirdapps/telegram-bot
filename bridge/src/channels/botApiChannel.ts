@@ -3,10 +3,13 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Logger } from '../../../src/logger/logger.js';
 import type {
+  CallbackEvent,
   Channel,
   ChannelTextHandler,
   ChannelVoiceHandler,
   ChannelMessage,
+  SendOptions,
+  StopEvent,
 } from './channel.js';
 
 /** Minimal bot interface for dependency injection. */
@@ -16,13 +19,26 @@ export interface BotLike {
     sendVoice: (
       chatId: string | number,
       voice: string | InputFile,
-      opts?: { duration?: number },
+      opts?: Record<string, unknown>,
       ...args: unknown[]
     ) => Promise<unknown>;
     getFile: (fileId: string) => Promise<{ file_path?: string }>;
+    sendMessageDraft: (
+      chatId: number,
+      draftId: number,
+      text: string,
+      other?: Record<string, unknown>,
+    ) => Promise<unknown>;
+    answerCallbackQuery: (id: string, other?: Record<string, unknown>) => Promise<unknown>;
+    setMyCommands: (
+      commands: readonly { command: string; description: string }[],
+    ) => Promise<unknown>;
   };
   on: (event: string, handler: (ctx: Context) => void | Promise<void>) => unknown;
-  start: (opts?: { onStart?: (info: { username?: string }) => void }) => Promise<void>;
+  start: (opts?: {
+    onStart?: (info: { username?: string }) => void;
+    allowed_updates?: readonly string[];
+  }) => Promise<void>;
   stop: () => Promise<void>;
   botInfo?: { username?: string };
 }
@@ -37,6 +53,43 @@ export interface BotApiChannelOpts {
   logger?: Logger;
   /** Override for tests. Defaults to the real `Bot` constructor. */
   botFactory?: BotFactory;
+  /** Update types to request from Telegram; unset keeps Telegram's default. */
+  allowedUpdates?: readonly string[];
+}
+
+/** Topic, replied-to text and chat type of an incoming message, when present. */
+function messageExtras(
+  ctx: Context,
+): Pick<ChannelMessage, 'threadId' | 'replyToText' | 'chatType'> {
+  const m = ctx.message;
+  const reply = m?.reply_to_message;
+  const replyText = reply?.text ?? reply?.caption;
+  return {
+    ...(m?.message_thread_id !== undefined ? { threadId: m.message_thread_id } : {}),
+    ...(replyText ? { replyToText: replyText } : {}),
+    ...(ctx.chat?.type !== undefined ? { chatType: ctx.chat.type } : {}),
+  };
+}
+
+function sendExtras(opts: SendOptions): Record<string, unknown> {
+  return {
+    ...(opts.threadId !== undefined ? { message_thread_id: opts.threadId } : {}),
+    ...(opts.button
+      ? {
+          reply_markup: {
+            inline_keyboard: [[{ text: opts.button.text, callback_data: opts.button.data }]],
+          },
+        }
+      : {}),
+  };
+}
+
+/** Telegram refused the markup or the length; the plain text of the same chunk will go through. */
+function isEntityOrLengthRejection(err: unknown): boolean {
+  const description = (err as { description?: unknown } | null)?.description;
+  return (
+    typeof description === 'string' && /can't parse entities|message is too long/i.test(description)
+  );
 }
 
 /**
@@ -56,6 +109,7 @@ export class BotApiChannel implements Channel {
   private readonly token: string;
   private readonly tmpDir: string;
   private readonly logger?: Logger;
+  private readonly allowedUpdates?: readonly string[];
   private textHandler?: ChannelTextHandler;
   private voiceHandler?: ChannelVoiceHandler;
   private started = false;
@@ -69,6 +123,7 @@ export class BotApiChannel implements Channel {
     if (opts.logger !== undefined) {
       this.logger = opts.logger;
     }
+    if (opts.allowedUpdates !== undefined) this.allowedUpdates = opts.allowedUpdates;
     mkdirSync(this.tmpDir, { recursive: true });
 
     this.bot.on('message:text', (ctx: Context) => {
@@ -78,7 +133,13 @@ export class BotApiChannel implements Channel {
       const senderId = String(ctx.from?.id ?? '');
       const messageId =
         ctx.message?.message_id !== undefined ? String(ctx.message.message_id) : undefined;
-      const msg: ChannelMessage = { channel: this.name, chatId, senderId, text };
+      const msg: ChannelMessage = {
+        channel: this.name,
+        chatId,
+        senderId,
+        text,
+        ...messageExtras(ctx),
+      };
       if (messageId !== undefined) msg.messageId = messageId;
       this.textHandler(msg);
     });
@@ -107,7 +168,7 @@ export class BotApiChannel implements Channel {
           'voice download failed',
         );
       }
-      const msg: ChannelMessage = { channel: this.name, chatId, senderId };
+      const msg: ChannelMessage = { channel: this.name, chatId, senderId, ...messageExtras(ctx) };
       if (messageId !== undefined) msg.messageId = messageId;
       if (mediaPath !== undefined) msg.mediaPath = mediaPath;
       this.voiceHandler(msg);
@@ -123,6 +184,7 @@ export class BotApiChannel implements Channel {
     // tailing logs) can react. Without this catch, errors are silently swallowed.
     void this.bot
       .start({
+        ...(this.allowedUpdates !== undefined ? { allowed_updates: this.allowedUpdates } : {}),
         onStart: (info) => {
           this.logger?.info(
             { component: 'botApiChannel', username: info.username },
@@ -159,5 +221,106 @@ export class BotApiChannel implements Channel {
 
   async sendVoice(chatId: string, audio: Buffer, durationSeconds: number): Promise<void> {
     await this.bot.api.sendVoice(chatId, new InputFile(audio), { duration: durationSeconds });
+  }
+
+  /** HTML message; if Telegram rejects the markup or the length, the same chunk as plain text. Returns the message id. */
+  async sendRich(
+    chatId: string,
+    html: string,
+    plain: string,
+    opts: SendOptions = {},
+  ): Promise<number> {
+    try {
+      const sent = (await this.bot.api.sendMessage(chatId, html, {
+        parse_mode: 'HTML',
+        link_preview_options: { is_disabled: true },
+        ...sendExtras(opts),
+      })) as { message_id?: number };
+      return sent.message_id ?? 0;
+    } catch (err) {
+      if (!isEntityOrLengthRejection(err)) throw err;
+      this.logger?.warn(
+        { component: 'botApiChannel', err: err instanceof Error ? err.message : String(err) },
+        'HTML rejected; resending as plain text',
+      );
+      return this.sendPlain(chatId, plain, opts);
+    }
+  }
+
+  async sendPlain(chatId: string, text: string, opts: SendOptions = {}): Promise<number> {
+    const sent = (await this.bot.api.sendMessage(chatId, text, {
+      link_preview_options: { is_disabled: true },
+      ...sendExtras(opts),
+    })) as { message_id?: number };
+    return sent.message_id ?? 0;
+  }
+
+  async sendDraft(
+    chatId: string,
+    threadId: number | undefined,
+    draftId: number,
+    text: string,
+  ): Promise<void> {
+    await this.bot.api.sendMessageDraft(Number(chatId), draftId, text, {
+      can_stop: true,
+      ...(threadId !== undefined ? { message_thread_id: threadId } : {}),
+    });
+  }
+
+  async sendVoiceTo(
+    chatId: string,
+    audio: Buffer,
+    durationSeconds: number,
+    opts: SendOptions = {},
+  ): Promise<void> {
+    await this.bot.api.sendVoice(chatId, new InputFile(audio), {
+      duration: durationSeconds,
+      ...sendExtras(opts),
+    });
+  }
+
+  async answerCallback(id: string, text?: string): Promise<void> {
+    await this.bot.api.answerCallbackQuery(id, text !== undefined ? { text } : {});
+  }
+
+  async setCommands(commands: readonly { command: string; description: string }[]): Promise<void> {
+    await this.bot.api.setMyCommands(commands);
+  }
+
+  /** Inline button taps. Registered only when called, so the general bridge never listens for them. */
+  onCallback(handler: (cb: CallbackEvent) => void): void {
+    this.bot.on('callback_query:data', (ctx: Context) => {
+      const q = ctx.callbackQuery;
+      if (!q?.data) return;
+      const chat = q.message?.chat;
+      handler({
+        id: q.id,
+        data: q.data,
+        senderId: String(q.from.id),
+        chatId: String(chat?.id ?? ''),
+        ...(chat?.type !== undefined ? { chatType: chat.type } : {}),
+      });
+    });
+  }
+
+  /** Stop pressed under a draft. Registered only when called. */
+  onStop(handler: (s: StopEvent) => void): void {
+    this.bot.on('stopped_message_generation', (ctx: Context) => {
+      const s = (
+        ctx.update as {
+          stopped_message_generation?: {
+            chat: { id: number };
+            message_thread_id?: number;
+            draft_id: number;
+          };
+        }
+      ).stopped_message_generation;
+      if (!s) return;
+      handler({
+        chatId: String(s.chat.id),
+        draftId: s.draft_id,
+        ...(s.message_thread_id !== undefined ? { threadId: s.message_thread_id } : {}),
+      });
+    });
   }
 }
