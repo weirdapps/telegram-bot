@@ -49,7 +49,13 @@ const zeroUsage = {
   output_tokens: 0,
 };
 
-export const success = (text: string, sessionId: string, denied: string[] = []): SDKMessage =>
+/** `isError`: the SDK's form of an API error it could not retry away, its text in `result`. */
+export const success = (
+  text: string,
+  sessionId: string,
+  denied: string[] = [],
+  isError = false,
+): SDKMessage =>
   msg({
     type: 'result',
     subtype: 'success',
@@ -57,7 +63,7 @@ export const success = (text: string, sessionId: string, denied: string[] = []):
     session_id: sessionId,
     total_cost_usd: 0.01,
     duration_ms: 1500,
-    is_error: false,
+    is_error: isError,
     num_turns: 2,
     usage: zeroUsage,
     permission_denials: denied.map((tool_name) => ({

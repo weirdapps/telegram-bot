@@ -165,6 +165,14 @@ describe('runBrainTurn', () => {
     ).rejects.toThrow('error_during_execution: boom');
   });
 
+  it('throws on an API error the SDK reports as a success result', async () => {
+    const q = scriptedQuery([init(), success('API Error: 529 Overloaded', 'id-1', [], true)]);
+    await expect(
+      runBrainTurn({ prompt: 'q', subject: undefined, abort: live() }, turnDeps(q.fn)),
+    ).rejects.toThrow('Claude: API Error: 529 Overloaded');
+    expect(q.calls).toHaveLength(1);
+  });
+
   it('reports tool calls and streamed text as events', async () => {
     const query = 'budget 2027 plan for the retail unit and more words';
     const q = scriptedQuery([

@@ -202,6 +202,8 @@ function outcome(run: AttemptRun, a: Attempt): TurnOutcome {
     usedFallback: a.usedFallback,
     denied: r.permission_denials.map((d) => d.tool_name),
   };
+  // A success with is_error carries an API error the CLI could not retry away: never an answer.
+  if (r.subtype === 'success' && r.is_error) throw new Error(`Claude: ${r.result}`);
   if (r.subtype === 'success') return { ...base, text: r.result, hitMaxTurns: false };
   if (r.subtype === 'error_max_turns') return { ...base, text: run.text, hitMaxTurns: true };
   throw new Error(`Claude: ${r.subtype}${r.errors.length > 0 ? `: ${r.errors.join('; ')}` : ''}`);
