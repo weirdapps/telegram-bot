@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   DRAFT_KEEPALIVE_MS,
+  DRAFT_STOP_GRACE_MS,
   DraftStream,
   type DraftSink,
 } from '../bridge/src/brain/draftStream.js';
@@ -36,7 +37,7 @@ describe('DraftStream', () => {
     d.start();
     await vi.advanceTimersByTimeAsync(0);
     expect(sent).toEqual([{ threadId: 7, draftId: 5, text: '' }]);
-    d.stop();
+    await d.stop();
   });
 
   it('sends at most one update per second, with the latest text', async () => {
@@ -53,7 +54,7 @@ describe('DraftStream', () => {
     await vi.advanceTimersByTimeAsync(1);
     expect(sent).toHaveLength(1);
     expect(sent[0]?.text).toContain('abc');
-    d.stop();
+    await d.stop();
   });
 
   it('keeps the last three tool lines', async () => {
@@ -65,7 +66,7 @@ describe('DraftStream', () => {
     const text = sent[sent.length - 1]?.text ?? '';
     expect(text).not.toContain('recall: one');
     expect(text).toContain('🔎 recall: four');
-    d.stop();
+    await d.stop();
   });
 
   it('shows only the tail of a long answer', () => {
@@ -87,7 +88,7 @@ describe('DraftStream', () => {
     await vi.advanceTimersByTimeAsync(DRAFT_KEEPALIVE_MS);
     expect(sent).toHaveLength(1);
     expect(sent[0]?.text).toContain('⏱ 15s');
-    d.stop();
+    await d.stop();
   });
 
   it('sends nothing after stop()', async () => {
@@ -95,9 +96,11 @@ describe('DraftStream', () => {
     const d = new DraftStream({ sink, chatId: '1', draftId: 1 });
     d.start();
     await vi.advanceTimersByTimeAsync(0);
-    d.stop();
+    const stopping = d.stop();
     // flush() goes quiet once stopped, so only the timer count catches a leaked keep-alive.
+    // Nothing is in flight, so stop() must not start a grace timer either.
     expect(vi.getTimerCount()).toBe(0);
+    await stopping;
     d.setText('late');
     await vi.advanceTimersByTimeAsync(60_000);
     expect(sent).toHaveLength(1);
@@ -111,7 +114,7 @@ describe('DraftStream', () => {
     await vi.advanceTimersByTimeAsync(0);
     expect(errors).toHaveLength(1);
     expect(sent[0]?.text).toContain('⏱ 0s');
-    d.stop();
+    await d.stop();
   });
 
   it('never starts the tail on half an emoji', () => {
@@ -144,8 +147,8 @@ describe('DraftStream', () => {
     const stopping = d.stop().then(() => {
       stopped = true;
     });
-    d.setText('late');
-    await vi.advanceTimersByTimeAsync(60_000);
+    d.setText('late'); // a running stream would send this a second after 'x'
+    await vi.advanceTimersByTimeAsync(DRAFT_STOP_GRACE_MS - 1);
     settles[1]?.();
     await vi.advanceTimersByTimeAsync(0);
     expect(stopped).toBe(false); // the placeholder is still in flight
@@ -176,6 +179,40 @@ describe('DraftStream', () => {
     expect(texts).toEqual(['']); // no fallback text once stopped
   });
 
+  it('stop() gives a hung update DRAFT_STOP_GRACE_MS, then resolves anyway', async () => {
+    const sink: DraftSink = { sendDraft: () => new Promise<void>(() => undefined) };
+    const d = new DraftStream({ sink, chatId: '1', draftId: 1 });
+    d.start(); // the placeholder never settles
+    let stopped = false;
+    const stopping = d.stop().then(() => {
+      stopped = true;
+    });
+    await vi.advanceTimersByTimeAsync(DRAFT_STOP_GRACE_MS - 1);
+    expect(stopped).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(stopped).toBe(true);
+    await stopping;
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('stop() resolves as soon as the update in flight settles, and leaves no timer', async () => {
+    const sink: DraftSink = {
+      sendDraft: () => new Promise<void>((resolve) => setTimeout(() => resolve(), 300)),
+    };
+    const d = new DraftStream({ sink, chatId: '1', draftId: 1 });
+    d.start(); // the placeholder takes 300 ms
+    let stopped = false;
+    const stopping = d.stop().then(() => {
+      stopped = true;
+    });
+    await vi.advanceTimersByTimeAsync(299);
+    expect(stopped).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(stopped).toBe(true);
+    await stopping;
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it('holds a keep-alive that falls within a second of the last update', async () => {
     const { sink, sent } = recorder();
     const d = new DraftStream({ sink, chatId: '1', draftId: 1 });
@@ -188,7 +225,7 @@ describe('DraftStream', () => {
     expect(sent).toHaveLength(2);
     await vi.advanceTimersByTimeAsync(1);
     expect(sent).toHaveLength(3);
-    d.stop();
+    await d.stop();
   });
 
   it('never doubles a keep-alive with an update already scheduled', async () => {
@@ -204,6 +241,58 @@ describe('DraftStream', () => {
     await vi.advanceTimersByTimeAsync(1);
     expect(sent).toHaveLength(3);
     expect(sent[2]?.text).toContain('xy');
-    d.stop();
+    await d.stop();
+  });
+
+  it('drops the placeholder fallback when an update is already scheduled', async () => {
+    const texts: string[] = [];
+    let refuse!: (err: Error) => void;
+    const sink: DraftSink = {
+      sendDraft: (_chatId, _threadId, _draftId, text) => {
+        texts.push(text);
+        if (texts.length > 1) return Promise.resolve();
+        return new Promise<void>((_resolve, reject) => {
+          refuse = reject;
+        });
+      },
+    };
+    const d = new DraftStream({ sink, chatId: '1', draftId: 1 });
+    d.start(); // the placeholder is in flight
+    await vi.advanceTimersByTimeAsync(100);
+    d.setText('a'); // scheduled for a second after the placeholder
+    await vi.advanceTimersByTimeAsync(200);
+    refuse(new Error('Bad Request: text must be non-empty'));
+    await vi.advanceTimersByTimeAsync(699);
+    expect(texts).toHaveLength(1); // no fallback: the scheduled update shows the same state
+    await vi.advanceTimersByTimeAsync(1);
+    expect(texts).toHaveLength(2);
+    expect(texts[1]).toContain('a');
+    await d.stop();
+  });
+
+  it('survives an onError that throws', async () => {
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown) => {
+      unhandled.push(reason);
+    };
+    process.on('unhandledRejection', onUnhandled);
+    try {
+      const { sink, sent } = recorder(true);
+      const d = new DraftStream({
+        sink,
+        chatId: '1',
+        draftId: 1,
+        onError: () => {
+          throw new Error('reporter down');
+        },
+      });
+      d.start(); // the placeholder is refused, and reporting that throws
+      await vi.advanceTimersByTimeAsync(0);
+      expect(unhandled).toEqual([]);
+      expect(sent[0]?.text).toContain('⏱ 0s'); // the fallback still goes out
+      await d.stop();
+    } finally {
+      process.off('unhandledRejection', onUnhandled);
+    }
   });
 });

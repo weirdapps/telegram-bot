@@ -16,6 +16,7 @@ export interface DraftSink {
 
 export const DRAFT_MIN_INTERVAL_MS = 1000;
 export const DRAFT_KEEPALIVE_MS = 15_000;
+export const DRAFT_STOP_GRACE_MS = 2000;
 const TEXT_TAIL = 3500;
 const TOOL_LINES = 3;
 
@@ -35,7 +36,7 @@ export class DraftStream {
   private lastSent = 0;
   private pending: ReturnType<typeof setTimeout> | undefined;
   private keepAlive: ReturnType<typeof setInterval> | undefined;
-  private settled: Promise<unknown> = Promise.resolve();
+  private readonly inFlight = new Set<Promise<boolean>>();
   private stopped = false;
 
   constructor(private readonly o: DraftStreamOptions) {
@@ -45,7 +46,8 @@ export class DraftStream {
   /** Telegram's "Thinking…" placeholder now, then keep the draft alive until stop(). */
   start(): void {
     void this.push('').then((ok) => {
-      if (!ok && !this.stopped) void this.push(this.render());
+      // An update already scheduled shows the same state, so it stands in for the fallback.
+      if (!ok && !this.stopped && !this.pending) void this.push(this.render());
     });
     this.keepAlive = setInterval(() => this.schedule(), DRAFT_KEEPALIVE_MS);
   }
@@ -62,13 +64,22 @@ export class DraftStream {
 
   /**
    * Clears both timers at once, then resolves when every update already sent has settled, so
-   * a late preview cannot land after the final answer. Never rejects.
+   * a late preview cannot land after the final answer. A hung send is waited on for at most
+   * DRAFT_STOP_GRACE_MS; past that it may still land, and expires within 30 s. Never rejects.
    */
   async stop(): Promise<void> {
     this.stopped = true;
     if (this.pending) clearTimeout(this.pending);
     if (this.keepAlive) clearInterval(this.keepAlive);
-    await this.settled;
+    if (this.inFlight.size === 0) return;
+    let grace: ReturnType<typeof setTimeout> | undefined;
+    await Promise.race([
+      Promise.allSettled(this.inFlight),
+      new Promise<void>((resolve) => {
+        grace = setTimeout(resolve, DRAFT_STOP_GRACE_MS);
+      }),
+    ]);
+    clearTimeout(grace);
   }
 
   render(): string {
@@ -103,8 +114,9 @@ export class DraftStream {
 
   private push(text: string): Promise<boolean> {
     const sent = this.send(text);
-    // Chained, so stop() waits for every send still in flight, not only the latest.
-    this.settled = Promise.allSettled([this.settled, sent]);
+    // Held until it settles, so stop() can wait for every send still in flight.
+    this.inFlight.add(sent);
+    void sent.then(() => this.inFlight.delete(sent));
     return sent;
   }
 
@@ -114,7 +126,11 @@ export class DraftStream {
       await this.o.sink.sendDraft(this.o.chatId, this.o.threadId, this.o.draftId, text);
       return true;
     } catch (err) {
-      this.o.onError?.(err);
+      try {
+        this.o.onError?.(err);
+      } catch {
+        // A reporter that throws must not break the turn either: send() never rejects.
+      }
       return false;
     }
   }
