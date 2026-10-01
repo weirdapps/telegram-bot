@@ -508,6 +508,28 @@ describe('BrainApp', () => {
     expect(out.sent).toHaveLength(0);
   });
 
+  it('tells the owner, in the topic, that a photo or a file is not read', async () => {
+    const { a, q } = app();
+    await a.onOther(message('', { threadId: 7 }));
+    expect(out.sent).toEqual([
+      {
+        kind: 'plain',
+        chatId: '500',
+        text: 'I read text and voice notes only.',
+        opts: { threadId: 7 },
+      },
+    ]);
+    expect(q.calls).toHaveLength(0);
+  });
+
+  it('ignores a photo or a file from a stranger or a group', async () => {
+    const { a } = app();
+    await a.onOther(message('', { senderId: '666' }));
+    await a.onOther(message('', { chatType: 'group' }));
+    expect(out.sent).toHaveLength(0);
+    expect(log.warn).toHaveBeenCalledTimes(2);
+  });
+
   it('discards the voice notes it rejects, and never one it answers', async () => {
     const { a, q } = app(answer('Σύντομη απάντηση.', 'id-1'));
     await a.onVoice(message('', { senderId: '666', mediaPath: '/tmp/stranger.ogg' }));

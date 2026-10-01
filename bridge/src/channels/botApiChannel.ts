@@ -59,6 +59,27 @@ export interface BotApiChannelOpts {
   onPollingStopped?: (err: unknown) => void;
 }
 
+/** Content a message can carry besides text and a voice note; service messages carry none. */
+const OTHER_CONTENT = [
+  'animation',
+  'audio',
+  'checklist',
+  'contact',
+  'dice',
+  'document',
+  'game',
+  'live_photo',
+  'location',
+  'paid_media',
+  'photo',
+  'poll',
+  'sticker',
+  'story',
+  'venue',
+  'video',
+  'video_note',
+] as const;
+
 /** Topic, replied-to text and chat type of an incoming message, when present. */
 function messageExtras(
   ctx: Context,
@@ -308,6 +329,25 @@ export class BotApiChannel implements Channel {
         senderId: String(q.from.id),
         chatId: String(chat?.id ?? ''),
         ...(chat?.type !== undefined ? { chatType: chat.type } : {}),
+      });
+    });
+  }
+
+  /**
+   * Any other message with content: a photo, a file, a sticker, a location. Never text or a
+   * voice note, which onText and onVoice handle, and never a service message such as a new
+   * topic or a pin. Registered only when called.
+   */
+  onOtherMessage(handler: ChannelTextHandler): void {
+    this.bot.on('message', (ctx: Context) => {
+      const m = ctx.message;
+      if (!m || !OTHER_CONTENT.some((kind) => m[kind] !== undefined)) return;
+      handler({
+        channel: this.name,
+        chatId: String(ctx.chat?.id ?? ''),
+        senderId: String(ctx.from?.id ?? ''),
+        messageId: String(m.message_id),
+        ...messageExtras(ctx),
       });
     });
   }

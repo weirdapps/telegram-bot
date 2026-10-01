@@ -258,6 +258,16 @@ export class BrainApp {
     });
   }
 
+  /** A photo, a file, a sticker: content the bot does not read. */
+  async onOther(m: ChannelMessage): Promise<void> {
+    if (!this.accepts(m.senderId, m.chatType)) return this.reject(m.senderId, m.chatId);
+    await this.d.out.sendPlain(
+      m.chatId,
+      'I read text and voice notes only.',
+      threadOpts(m.threadId),
+    );
+  }
+
   async onCallback(cb: CallbackEvent): Promise<void> {
     const tap = parseNewButton(cb.data);
     if (!this.accepts(cb.senderId, cb.chatType) || tap === null || tap.chatId !== cb.chatId) {

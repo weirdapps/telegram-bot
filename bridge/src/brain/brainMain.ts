@@ -139,6 +139,7 @@ export async function startBrain(o: {
       );
   channel.onText((m) => void app.onText(m).catch(guard('text')));
   channel.onVoice((m) => void app.onVoice(m).catch(guard('voice')));
+  channel.onOtherMessage((m) => void app.onOther(m).catch(guard('other message')));
   channel.onCallback((cb) => void app.onCallback(cb).catch(guard('button')));
   channel.onStop((s) => {
     try {

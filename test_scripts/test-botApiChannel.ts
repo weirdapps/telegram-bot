@@ -245,6 +245,58 @@ describe('BotApiChannel brain support', () => {
     ]);
   });
 
+  it('onOtherMessage maps a photo, a file or a sticker, and listens only once asked', () => {
+    const { bot, handlers } = fakeBot();
+    const ch = channelWith(bot);
+    expect(bot.on.mock.calls.map(([event]) => event)).toEqual(['message:text', 'message:voice']);
+    const got: unknown[] = [];
+    ch.onOtherMessage((m) => got.push(m));
+    expect(bot.on.mock.calls.map(([event]) => event)).toEqual([
+      'message:text',
+      'message:voice',
+      'message',
+    ]);
+    const chat = { id: 500, type: 'private' };
+    const from = { id: 1001 };
+    handlers['message']?.({
+      message: { message_id: 9, message_thread_id: 7, photo: [{ file_id: 'p' }], caption: 'what?' },
+      chat,
+      from,
+    });
+    handlers['message']?.({ message: { message_id: 10, document: { file_id: 'd' } }, chat, from });
+    handlers['message']?.({ message: { message_id: 11, sticker: { file_id: 's' } }, chat, from });
+    expect(got).toEqual([
+      {
+        channel: 'bot',
+        chatId: '500',
+        senderId: '1001',
+        messageId: '9',
+        threadId: 7,
+        chatType: 'private',
+      },
+      { channel: 'bot', chatId: '500', senderId: '1001', messageId: '10', chatType: 'private' },
+      { channel: 'bot', chatId: '500', senderId: '1001', messageId: '11', chatType: 'private' },
+    ]);
+  });
+
+  it('onOtherMessage leaves text, voice notes and service messages such as a new topic alone', () => {
+    const { bot, handlers } = fakeBot();
+    const ch = channelWith(bot);
+    const got: unknown[] = [];
+    ch.onOtherMessage((m) => got.push(m));
+    const chat = { id: 500, type: 'private' };
+    const from = { id: 1001 };
+    for (const message of [
+      { message_id: 1, text: 'a question' },
+      { message_id: 2, voice: { file_id: 'v', duration: 3 } },
+      { message_id: 3, forum_topic_created: { name: 'Budget', icon_color: 7322096 } },
+      { message_id: 4, pinned_message: { message_id: 1, date: 0, chat } },
+    ]) {
+      handlers['message']?.({ message, chat, from });
+    }
+    expect(got).toEqual([]);
+  });
+
   it('onStop maps the stop update', () => {
     const { bot, handlers } = fakeBot();
     const ch = channelWith(bot);
