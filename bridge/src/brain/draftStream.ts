@@ -35,6 +35,7 @@ export class DraftStream {
   private lastSent = 0;
   private pending: ReturnType<typeof setTimeout> | undefined;
   private keepAlive: ReturnType<typeof setInterval> | undefined;
+  private settled: Promise<unknown> = Promise.resolve();
   private stopped = false;
 
   constructor(private readonly o: DraftStreamOptions) {
@@ -46,7 +47,7 @@ export class DraftStream {
     void this.push('').then((ok) => {
       if (!ok && !this.stopped) void this.push(this.render());
     });
-    this.keepAlive = setInterval(() => this.flush(), DRAFT_KEEPALIVE_MS);
+    this.keepAlive = setInterval(() => this.schedule(), DRAFT_KEEPALIVE_MS);
   }
 
   tool(name: string, detail: string): void {
@@ -59,14 +60,19 @@ export class DraftStream {
     this.schedule();
   }
 
-  stop(): void {
+  /**
+   * Clears both timers at once, then resolves when every update already sent has settled, so
+   * a late preview cannot land after the final answer. Never rejects.
+   */
+  async stop(): Promise<void> {
     this.stopped = true;
     if (this.pending) clearTimeout(this.pending);
     if (this.keepAlive) clearInterval(this.keepAlive);
+    await this.settled;
   }
 
   render(): string {
-    const body = this.text.length > TEXT_TAIL ? `…${this.text.slice(-TEXT_TAIL)}` : this.text;
+    const body = this.text.length > TEXT_TAIL ? `…${tailOf(this.text)}` : this.text;
     const seconds = Math.round((this.now() - this.startedAt) / 1000);
     return [...this.tools.slice(-TOOL_LINES), ...(body ? ['', body] : []), '', `⏱ ${seconds}s`]
       .join('\n')
@@ -80,6 +86,11 @@ export class DraftStream {
   private schedule(): void {
     if (this.stopped || this.pending) return;
     const wait = Math.max(0, this.lastSent + DRAFT_MIN_INTERVAL_MS - this.now());
+    if (wait === 0) {
+      // Nothing sent in the last second: send now rather than through a 0 ms timer.
+      this.flush();
+      return;
+    }
     this.pending = setTimeout(() => {
       this.pending = undefined;
       this.flush();
@@ -90,7 +101,14 @@ export class DraftStream {
     if (!this.stopped) void this.push(this.render());
   }
 
-  private async push(text: string): Promise<boolean> {
+  private push(text: string): Promise<boolean> {
+    const sent = this.send(text);
+    // Chained, so stop() waits for every send still in flight, not only the latest.
+    this.settled = Promise.allSettled([this.settled, sent]);
+    return sent;
+  }
+
+  private async send(text: string): Promise<boolean> {
     this.lastSent = this.now();
     try {
       await this.o.sink.sendDraft(this.o.chatId, this.o.threadId, this.o.draftId, text);
@@ -100,4 +118,12 @@ export class DraftStream {
       return false;
     }
   }
+}
+
+// The last TEXT_TAIL code units of `text`. A cut through an emoji would start on the low half
+// of its surrogate pair, which is invalid UTF-16 and can make Telegram reject the draft.
+function tailOf(text: string): string {
+  const tail = text.slice(-TEXT_TAIL);
+  const first = tail.charCodeAt(0);
+  return first >= 0xdc00 && first <= 0xdfff ? tail.slice(1) : tail;
 }
