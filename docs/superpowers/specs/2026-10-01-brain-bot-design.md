@@ -94,7 +94,8 @@ sb-mcp.service ──▶ brain.db (master, WAL) + embeddings.npz     (second-bra
   and `outlook-cli` on `PATH` for `outlook_live_search`.
 - `Restart=always`, `OnFailure=notify-failure@%n.service`, `MemoryMax=4G`. One index takes about
   1.6 GB, and a reload briefly holds two.
-- The unit file is archived at `scripts/wrappers/systemd/sb-mcp.service`.
+- The repo archives the wrapper the unit runs, `scripts/wrappers/systemd/sb-mcp.sh`. The unit text
+  itself is in `docs/DEPLOY.md`, section 9; there is no archived unit file.
 
 ### 4.2 `telegram-brain.service` (this repo)
 
