@@ -83,10 +83,17 @@ export function markdownToTelegramHtml(md: string): string {
   return out.join('\n');
 }
 
-/** The model's Markdown in Telegram-sized pieces, each converted on its own so no tag spans two messages. */
+/**
+ * The model's Markdown in Telegram-sized pieces, each converted on its own so no tag spans two
+ * messages. A code block cut by a chunk boundary is reopened at the top of the next chunk, so its
+ * lines still render as code there; `plain` stays as the model wrote it.
+ */
 export function toTelegramChunks(md: string): TelegramChunk[] {
-  return splitMessage(md, CHUNK_SOURCE_CHARS).map((plain) => ({
-    html: markdownToTelegramHtml(plain),
-    plain,
-  }));
+  let inFence = false;
+  return splitMessage(md, CHUNK_SOURCE_CHARS).map((plain) => {
+    const html = markdownToTelegramHtml(inFence ? '```\n' + plain : plain);
+    const fences = plain.split('\n').filter((line) => /^\s*```/.test(line)).length;
+    if (fences % 2 === 1) inFence = !inFence;
+    return { html, plain };
+  });
 }

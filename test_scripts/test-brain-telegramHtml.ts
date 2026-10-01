@@ -71,4 +71,32 @@ describe('toTelegramChunks', () => {
       expect((c.html.match(/<b>/g) ?? []).length).toBe((c.html.match(/<\/b>/g) ?? []).length);
     }
   });
+
+  it('keeps a code block cut by a chunk boundary inside <pre> in every chunk, and the prose after it outside', () => {
+    const md =
+      '```\n' +
+      'SELECT * FROM emails WHERE n < 2;\n'.repeat(250) +
+      '```\n\nAfter the table, **bold** prose.';
+    const outsidePre = (html: string) => html.replace(/<pre><code>[\s\S]*?<\/code><\/pre>/g, '');
+    const chunks = toTelegramChunks(md);
+    expect(chunks.length).toBeGreaterThan(2);
+    for (const c of chunks) {
+      expect(c.plain.length).toBeLessThanOrEqual(CHUNK_SOURCE_CHARS);
+      expect(c.html.length).toBeLessThanOrEqual(4096);
+      for (const tag of ['pre', 'code', 'b', 'i']) {
+        expect(c.html.split(`<${tag}>`).length, tag).toBe(c.html.split(`</${tag}>`).length);
+      }
+      // Every code line of the chunk is rendered, and none of them outside a <pre><code> block.
+      expect(c.html.split('FROM emails').length).toBe(c.plain.split('FROM emails').length);
+      expect(outsidePre(c.html)).not.toContain('FROM emails');
+    }
+    expect(outsidePre(chunks.at(-1)?.html ?? '')).toContain('After the table, <b>bold</b> prose.');
+    // plain stays as the model wrote it: its own two fences, none added.
+    expect(
+      chunks
+        .map((c) => c.plain)
+        .join('\n')
+        .match(/^```/gm),
+    ).toHaveLength(2);
+  });
 });
