@@ -64,11 +64,19 @@ describe('replies', () => {
     expect(closedText({ ...subject, questions: 2 })).toBe('Closed: «Budget owner?», 2 questions.');
   });
 
-  it('describes the current subject', () => {
-    const text = contextText(subject, new Date(T0.getTime() + 2 * 3_600_000), 'model-x');
+  it('describes the current subject: its age, not a wall time, and how long it has been idle', () => {
+    const followed = recordExchange(subject, {
+      question: 'And the forecast?',
+      answer: 'Bob.',
+      sessionId: 's1',
+      contextTokens: 45_600,
+      now: new Date(T0.getTime() + 3_600_000),
+    });
+    const text = contextText(followed, new Date(T0.getTime() + 3 * 3_600_000), 'model-x');
     expect(text).toContain('Subject: «Budget owner?»');
-    expect(text).toContain('Questions: 1');
-    expect(text).toContain('Opened: 2026-10-01 10:00 UTC');
+    expect(text).toContain('Questions: 2');
+    expect(text).toContain('Opened: 3 h ago');
+    expect(text).not.toContain('UTC');
     expect(text).toContain('Idle: 2 h');
     expect(text).toContain('Context: ~46k tokens');
     expect(text).toContain('Model: model-x');

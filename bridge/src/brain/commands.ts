@@ -65,10 +65,11 @@ export function formatHours(h: number): string {
 
 export function contextText(s: Subject | undefined, now: Date, model: string): string {
   if (!s) return 'No open subject here. Your next question starts one.';
+  const ageHours = (now.getTime() - Date.parse(s.createdAt)) / 3_600_000;
   return [
     `Subject: «${s.title}»`,
     `Questions: ${s.questions}`,
-    `Opened: ${s.createdAt.slice(0, 16).replace('T', ' ')} UTC`,
+    `Opened: ${formatHours(ageHours)} ago`,
     `Idle: ${formatHours(idleHours(s, now))}`,
     `Context: ~${Math.round(s.contextTokens / 1000)}k tokens`,
     `Model: ${model}`,
