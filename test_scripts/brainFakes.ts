@@ -109,15 +109,17 @@ export function scriptedQuery(...runs: Run[]): { fn: QueryFn; calls: Call[] } {
   const fn: QueryFn = ({ prompt, options }) => {
     calls.push({ prompt, options });
     const run = runs[calls.length - 1];
+    // Settles at once when it can never fire: abort events do not replay to late listeners.
     const aborted = (): Promise<never> => {
       const p = new Promise<never>((_, reject) => {
-        options.abortController?.signal.addEventListener(
-          'abort',
-          () => reject(new Error('aborted')),
-          {
-            once: true,
-          },
-        );
+        const signal = options.abortController?.signal;
+        if (signal === undefined) {
+          reject(new Error('scriptedQuery: a hang or gated run needs options.abortController'));
+        } else if (signal.aborted) {
+          reject(new Error('aborted'));
+        } else {
+          signal.addEventListener('abort', () => reject(new Error('aborted')), { once: true });
+        }
       });
       p.catch(() => undefined);
       return p;

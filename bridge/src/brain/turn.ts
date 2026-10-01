@@ -130,6 +130,8 @@ async function runAttempt(a: Attempt, deps: TurnDeps, outer: AbortSignal): Promi
   };
 
   let text = '';
+  // Every message's text this attempt, for a step-limit stop; drafts show one message at a time.
+  const texts: string[] = [];
   let contextTokens = 0;
   let result: SDKResultMessage | null = null;
   arm();
@@ -156,6 +158,7 @@ async function runAttempt(a: Attempt, deps: TurnDeps, outer: AbortSignal): Promi
       } else if (m.type === 'stream_event') {
         const ev = m.event;
         if (ev.type === 'message_start') {
+          if (text !== '') texts.push(text);
           text = '';
           const u = ev.message.usage;
           contextTokens =
@@ -181,15 +184,18 @@ async function runAttempt(a: Attempt, deps: TurnDeps, outer: AbortSignal): Promi
       }
     }
   } catch (err) {
-    if (abort.signal.aborted) throw reasonOf(abort.signal);
-    throw err;
+    // After our own abort the SDK's error is only its echo; the abort reason decides below.
+    if (!abort.signal.aborted) throw err;
   } finally {
     if (timer) clearTimeout(timer);
     outer.removeEventListener('abort', onOuter);
   }
-  if (abort.signal.aborted) throw reasonOf(abort.signal);
+  // Silence after the result loses nothing: the answer is already in.
+  const quietAfterResult = result !== null && abort.signal.reason instanceof SilenceError;
+  if (abort.signal.aborted && !quietAfterResult) throw reasonOf(abort.signal);
   if (result === null) throw new Error('the Claude SDK ended without a result');
-  return { result, text, contextTokens };
+  if (text !== '') texts.push(text);
+  return { result, text: texts.join('\n\n'), contextTokens };
 }
 
 function outcome(run: AttemptRun, a: Attempt): TurnOutcome {
@@ -251,7 +257,9 @@ export async function runBrainTurn(input: TurnInput, deps: TurnDeps): Promise<Tu
       return outcome(run, first);
     }
   } catch (err) {
-    if (input.abort.aborted || err instanceof BrainOfflineError) throw err;
+    // The owner's stop wins, even when the watchdog's abort got there first.
+    if (input.abort.aborted) throw reasonOf(input.abort);
+    if (err instanceof BrainOfflineError) throw err;
     const message = err instanceof Error ? err.message : String(err);
     if (
       err instanceof SilenceError ||

@@ -158,6 +158,45 @@ describe('runBrainTurn', () => {
     expect(out).toMatchObject({ text: 'Partial findings', hitMaxTurns: true, sessionId: 'id-1' });
   });
 
+  it('returns the text of every message when the step limit is hit', async () => {
+    const q = scriptedQuery([
+      init(),
+      usage(10),
+      delta('First findings'),
+      toolUse('mcp__second-brain__recall', { query: 'budget' }),
+      usage(20),
+      delta('More findings'),
+      usage(30),
+      failure('error_max_turns', [], 'id-1'),
+    ]);
+    const deps = turnDeps(q.fn);
+    const out = await runBrainTurn({ prompt: 'q', subject: undefined, abort: live() }, deps);
+    expect(out).toMatchObject({ text: 'First findings\n\nMore findings', hitMaxTurns: true });
+    // Drafts still show one message at a time.
+    expect(deps.events.at(-1)).toEqual({ kind: 'text', text: 'More findings' });
+  });
+
+  it('keeps a result that arrived before the SDK went silent', async () => {
+    vi.useFakeTimers();
+    try {
+      const q = scriptedQuery('hang');
+      // The CLI sends its result, then goes quiet without exiting.
+      const lingering: QueryFn = (args) =>
+        (async function* () {
+          yield* answer('done', 'id-1');
+          yield* q.fn(args);
+        })();
+      const settled = expect(
+        runBrainTurn({ prompt: 'q', subject: undefined, abort: live() }, turnDeps(lingering)),
+      ).resolves.toMatchObject({ text: 'done', sessionId: 'id-1' });
+      await vi.advanceTimersByTimeAsync(1000);
+      await settled;
+      expect(q.calls).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('throws on any other error result', async () => {
     const q = scriptedQuery([init(), failure('error_during_execution', ['boom'])]);
     await expect(
@@ -226,6 +265,38 @@ describe('runBrainTurn', () => {
     setTimeout(() => stop.abort(new TurnCancelled('stopped')), 10);
     await expect(turn).rejects.toBeInstanceOf(TurnCancelled);
     expect(q.calls).toHaveLength(1);
+  });
+
+  it('reports an owner stop that lands while the watchdog is aborting as the stop', async () => {
+    const q = scriptedQuery('hang');
+    const stop = new AbortController();
+    // The stop arrives after the watchdog fired, before the SDK's rejection settles.
+    const query: QueryFn = (args) => {
+      args.options.abortController?.signal.addEventListener(
+        'abort',
+        () => stop.abort(new TurnCancelled('stopped')),
+        { once: true },
+      );
+      return q.fn(args);
+    };
+    await expect(
+      runBrainTurn({ prompt: 'q', subject: undefined, abort: stop.signal }, turnDeps(query)),
+    ).rejects.toBeInstanceOf(TurnCancelled);
+    expect(q.calls).toHaveLength(1);
+  });
+});
+
+describe('scriptedQuery', () => {
+  it('fails a hang at once when the signal is already aborted', async () => {
+    const abortController = new AbortController();
+    abortController.abort();
+    const run = scriptedQuery('hang').fn({ prompt: 'q', options: { abortController } });
+    await expect(run[Symbol.asyncIterator]().next()).rejects.toThrow('aborted');
+  });
+
+  it('fails a hang at once when no abort controller is given', async () => {
+    const run = scriptedQuery('hang').fn({ prompt: 'q', options: {} });
+    await expect(run[Symbol.asyncIterator]().next()).rejects.toThrow('abortController');
   });
 });
 
