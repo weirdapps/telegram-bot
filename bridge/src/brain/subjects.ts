@@ -36,7 +36,11 @@ interface SubjectFile {
 const VOICE_MODES: ReadonlySet<string> = new Set(['mirror', 'always', 'off']);
 
 function cut(s: string, max: number): string {
-  return s.length <= max ? s : `${s.slice(0, max - 1)}…`;
+  if (s.length <= max) return s;
+  // Never keep only the high half of a surrogate pair (an emoji): that is invalid UTF-16.
+  const last = s.charCodeAt(max - 2);
+  const end = last >= 0xd800 && last <= 0xdbff ? max - 2 : max - 1;
+  return `${s.slice(0, end)}…`;
 }
 
 export function subjectKey(chatId: string, threadId?: number): string {

@@ -6,6 +6,7 @@ import {
   LOG_ANSWER_CHARS,
   LOG_EXCHANGES,
   SubjectStore,
+  TITLE_CHARS,
   idleHours,
   rebuildSeed,
   recordExchange,
@@ -18,6 +19,8 @@ const T0 = new Date('2026-10-01T10:00:00.000Z');
 const later = (hours: number) => new Date(T0.getTime() + hours * 3_600_000);
 const first = (sessionId: string, question = 'Q1'): Subject =>
   recordExchange(undefined, { question, answer: 'A1', sessionId, contextTokens: 0, now: T0 });
+// Half of a surrogate pair: invalid UTF-16, which Telegram and the API can reject.
+const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
 
 describe('subject helpers', () => {
   it('keys by chat and topic', () => {
@@ -30,6 +33,13 @@ describe('subject helpers', () => {
     const long = titleFrom('x'.repeat(100));
     expect(long).toHaveLength(60);
     expect(long.endsWith('…')).toBe(true);
+  });
+
+  it('never cuts a title inside an emoji', () => {
+    const title = titleFrom('x'.repeat(58) + '😀😀');
+    expect(title).not.toMatch(LONE_SURROGATE);
+    expect(title.length).toBeLessThanOrEqual(TITLE_CHARS);
+    expect(title.endsWith('…')).toBe(true);
   });
 
   it('records the first exchange', () => {
@@ -81,6 +91,20 @@ describe('subject helpers', () => {
     expect(s?.log).toHaveLength(LOG_EXCHANGES);
     expect(s?.log[0]?.q).toBe('Q3');
     expect(s?.log[0]?.a).toHaveLength(LOG_ANSWER_CHARS);
+  });
+
+  it('never cuts a log answer inside an emoji', () => {
+    const s = recordExchange(undefined, {
+      question: 'Q1',
+      answer: 'a'.repeat(LOG_ANSWER_CHARS - 2) + '😀😀',
+      sessionId: 's',
+      contextTokens: 0,
+      now: T0,
+    });
+    const answer = s.log[0]?.a ?? '';
+    expect(answer).not.toMatch(LONE_SURROGATE);
+    expect(answer.length).toBeLessThanOrEqual(LOG_ANSWER_CHARS);
+    expect(answer.endsWith('…')).toBe(true);
   });
 
   it('measures idle time in hours', () => {
