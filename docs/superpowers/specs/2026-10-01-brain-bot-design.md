@@ -272,10 +272,10 @@ forbids personal names, internal project names and any non-public detail in `Web
 
 ### 6.6 Prompts
 
-- **Base prompt** (`bridge/src/prompts/brain-base.md`, generic): a retrieval assistant over the
-  owner's store; tool routing; up to five sources per answer (kind, who, date, subject); Telegram
-  formatting; answers in the language of the question; the untrusted-content and web-search rules
-  (6.4); and "check the `stats` coverage before saying something did not happen".
+- **Base prompt** (`bridge/src/brain/prompts/brain-base.md`, generic): a retrieval assistant over
+  the owner's store; tool routing; up to five sources per answer (kind, who, date, subject);
+  Telegram formatting; answers in the language of the question; the untrusted-content and
+  web-search rules (6.4); and "check the `stats` coverage before saying something did not happen".
 - **Persona file** (private, on the host, path in `TELEGRAM_BRIDGE_SYSTEM_PROMPT_FILE`): who the
   owner is and the organisational context. It is appended to the base prompt at start-up, and the
   brain profile refuses to start without it.
@@ -305,18 +305,27 @@ forbids personal names, internal project names and any non-public detail in `Web
 
 ## 8. Configuration (brain profile)
 
-| Variable                                      | Purpose                                                                       |
-| --------------------------------------------- | ----------------------------------------------------------------------------- |
-| `TELEGRAM_BRIDGE_PROFILE=brain`               | Selects the behaviour in this document. Unset keeps today's general bridge.   |
-| `TELEGRAM_BOT_TOKEN`                          | The brain bot's token, from a new BotFather bot.                              |
-| `TELEGRAM_BRIDGE_DISABLE_SAVED_MESSAGES=true` | Bot-only mode.                                                                |
-| `TELEGRAM_BRIDGE_STATE_PATH`                  | `~/.telegram-brain/subjects.json`.                                            |
-| `TELEGRAM_BRIDGE_SYSTEM_PROMPT_FILE`          | The private persona file.                                                     |
-| `CLAUDE_CONFIG_DIR`                           | `~/.telegram-brain/claude`, set by the unit for the whole process.            |
-| `BRIDGE_BRAIN_MCP_URL`                        | `http://127.0.0.1:8765/mcp`.                                                  |
-| `BRAIN_MCP_TOKEN_FILE`                        | The bearer token file, shared with `sb-mcp.service`. Read once, never logged. |
-| `BRIDGE_NEWS_MCP_COMMAND`                     | Path to the news-reader MCP launcher.                                         |
-| Existing `TELEGRAM_*`, voice, Vertex vars     | As documented in the README.                                                  |
+| Variable                                          | Purpose                                                                                                                |
+| ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `TELEGRAM_BRIDGE_PROFILE=brain`                   | Selects the behaviour in this document. Unset or empty keeps today's general bridge; any other value refuses to start. |
+| `TELEGRAM_BOT_TOKEN`                              | The brain bot's token, from a new BotFather bot.                                                                       |
+| `TELEGRAM_BRIDGE_ALLOWED_SENDER_IDS`              | The owner's user ID (6.5).                                                                                             |
+| `TELEGRAM_BRIDGE_STATE_PATH`                      | `~/.telegram-brain/subjects.json`.                                                                                     |
+| `TELEGRAM_BRIDGE_BOT_TMPDIR`                      | Optional: where voice notes download. Default `inbox` beside the state file.                                           |
+| `TELEGRAM_BRIDGE_SYSTEM_PROMPT_FILE`              | The private persona file.                                                                                              |
+| `CLAUDE_CONFIG_DIR`                               | `~/.telegram-brain/claude`, set by the unit for the whole process.                                                     |
+| `TELEGRAM_BRIDGE_CWD`                             | Optional: the SDK's working directory, created if missing. Default `CLAUDE_CONFIG_DIR`.                                |
+| `BRIDGE_BRAIN_MCP_URL`                            | `http://127.0.0.1:8765/mcp`.                                                                                           |
+| `BRAIN_MCP_TOKEN_FILE`                            | The bearer token file, shared with `sb-mcp.service`. Read once, never logged.                                          |
+| `BRIDGE_NEWS_MCP_COMMAND`                         | Path to the news-reader MCP launcher.                                                                                  |
+| `TELEGRAM_LOG_LEVEL`                              | Optional; default `info`.                                                                                              |
+| `ANTHROPIC_MODEL` and the other Vertex vars       | The model and region of every turn, passed to the CLI in its environment; `/context` names the model.                  |
+| `VERTEX_MODEL_FALLBACK`, `VERTEX_REGION_FALLBACK` | The refusal retry's model and region, with the general bridge's defaults.                                              |
+| The seven voice vars                              | As documented in the README.                                                                                           |
+
+The brain branch runs before `loadConfig()`, so the MTProto variables are neither read nor
+required, and `TELEGRAM_BRIDGE_DISABLE_SAVED_MESSAGES` does not apply. The example unit points
+dotenv at the brain's env file (`DOTENV_CONFIG_PATH`), so the repo's `.env` never fills its gaps.
 
 ## 9. Changes by repo
 
@@ -325,27 +334,48 @@ forbids personal names, internal project names and any non-public detail in `Web
 - `src/mcp_server.py`: the `--http HOST:PORT` entry, the bearer middleware, and the `sql_query` and
   `sql_schema` tools.
 - `src/store/sql_readonly.py` (new): the read-only connection, authorizer, budget and caps.
-- `scripts/wrappers/systemd/sb-mcp.service` (new).
-- `README.md` and `CLAUDE.md`: the HTTP mode, the token file, the new tools.
+- `scripts/wrappers/systemd/sb-mcp.sh` (new): the wrapper `sb-mcp.service` runs. The unit itself
+  is in `docs/DEPLOY.md`.
+- `README.md`, `CLAUDE.md` and `docs/DEPLOY.md`: the HTTP mode, the token file, the new tools.
 - Tests: `tests/test_mcp_http.py`, `tests/test_sql_readonly.py`.
 
 ### telegram-bot
 
-- `bridge/src/profile.ts` (new): reads and validates the brain profile and builds the SDK options
-  (tools, MCP servers, allowlist, prompt, settings).
-- `bridge/src/subjects.ts` (new): the subject store and keying.
-- `bridge/src/turn.ts` (new): the session lifecycle, the MCP status gate, the rebuild path, stream
-  events.
-- `bridge/src/draftStream.ts` (new): throttled `sendMessageDraft`, refresh, stop.
-- `bridge/src/telegramHtml.ts` (new): Markdown subset to Telegram HTML, and chunking.
-- `bridge/src/prompts/brain-base.md` (new): the base prompt.
-- `bridge/src/claude.ts`: accepts the profile's SDK options and an event callback, keeping today's
-  defaults for the general profile.
-- `bridge/src/channels/botApiChannel.ts` and `channel.ts`: thread IDs, reply quotes, inline button
-  callbacks, drafts, `setMyCommands`.
-- `bridge/src/index.ts`: routes to the brain flow when the profile is set and leaves the general
-  flow as it is.
-- `bridge/systemd/telegram-brain.service.example`, `bridge/README.md`, `README.md`.
+The brain's modules live in `bridge/src/brain/`:
+
+- `profile.ts` (new): reads and validates the brain profile, refuses an unknown
+  `TELEGRAM_BRIDGE_PROFILE`, and builds the SDK options (tools, MCP servers, allowlist, prompt,
+  settings).
+- `subjects.ts` (new): the subject store and keying.
+- `turn.ts` (new): one turn through the Agent SDK's `query`: the session lifecycle, the MCP status
+  gate, the rebuild path, the single retries, stream events.
+- `draftStream.ts` (new): throttled `sendMessageDraft`, refresh, stop.
+- `telegramHtml.ts` (new): Markdown subset to Telegram HTML, and chunking.
+- `keyedQueue.ts` (new): one turn at a time per subject, at most two across subjects (5.8).
+- `commands.ts` (new): the commands and their replies (5.3).
+- `brainApp.ts` (new): the bot's behaviour: access, commands, subjects, Stop, drafts, delivery and
+  failure replies.
+- `brainMain.ts` (new): wires the channel, the subject store, the SDK, Google Speech and
+  `brainApp.ts`, and shuts them down on a signal.
+- `prompts/brain-base.md` (new): the base prompt.
+
+Shared files change additively, and the general bridge behaves as before:
+
+- `bridge/src/claude.ts`: unchanged. The general bridge keeps its own options, and the brain calls
+  the SDK from `turn.ts`.
+- `bridge/src/claudeFallback.ts`: `fallbackTier`, so both profiles retry a refusal on the same
+  model, region and defaults.
+- `bridge/src/channels/botApiChannel.ts` and `channel.ts`: thread IDs, reply quotes, chat type,
+  inline button callbacks, drafts, `setMyCommands`, the update types to request, a callback when
+  polling stops, and a hook for media the brain does not read. Each acts only when the brain
+  registers or sets it.
+- `bridge/src/voiceMode.ts`: takes any store with `load` and `save` and any sender with
+  `sendText`, so the brain's store can back `/voice`.
+- `bridge/src/index.ts`: refuses an unknown profile, then routes to the brain before
+  `loadConfig()`, so the brain needs none of the MTProto settings. The general flow is as it was.
+- `src/config/config.ts`: exports `isValidLogLevel` for the brain's log-level check.
+- `bridge/systemd/telegram-brain.service.example`, `bridge/README.md`, `README.md`, `.env.example`,
+  and `.pre-commit-config.yaml` (markdownlint leaves the prompt as written).
 - Tests under `test_scripts/` for each new module.
 
 ## 10. Testing
