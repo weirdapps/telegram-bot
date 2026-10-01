@@ -40,6 +40,7 @@ export const NEW_SUBJECT_BUTTON = '🆕 New subject';
 export const TRANSCRIBE_WAIT_MS = 120_000;
 const CALLBACK_PREFIX = 'new:';
 const STALE_BUTTON = 'That subject is already closed.';
+const RESTARTING = 'Restarting; please ask again.';
 const QUOTE_CHARS = 500;
 
 export interface BrainOutput extends DraftSink {
@@ -164,16 +165,28 @@ export class BrainApp {
   private readonly queue: KeyedQueue;
   private readonly running = new Map<
     string,
-    { abort: AbortController; draftId: number; title: string }
+    { abort: AbortController; draftId: number; title: string; done: Promise<void> }
   >();
   /** Each subject's sessions started or resumed since its last close, which deletes them all. */
   private readonly sessions = new Map<string, Set<string>>();
   // From a random start in [1, 2^30): a Stop that Telegram queued while the bot was down then
   // cannot match the first draft after the restart.
   private draftSeq = 1 + Math.floor(Math.random() * (2 ** 30 - 1));
+  private restarting = false;
 
   constructor(private readonly d: BrainAppDeps) {
     this.queue = new KeyedQueue(d.maxConcurrent ?? 2);
+  }
+
+  /**
+   * For a restart: cancels every running turn, and every turn that would start later, each
+   * replying "Restarting; please ask again.". Resolves once the running turns have replied.
+   */
+  async cancelAll(): Promise<void> {
+    this.restarting = true;
+    const turns = [...this.running.values()];
+    for (const t of turns) t.abort.abort(new TurnCancelled('restart'));
+    await Promise.allSettled(turns.map((t) => t.done));
   }
 
   async onText(m: ChannelMessage): Promise<void> {
@@ -442,9 +455,17 @@ export class BrainApp {
 
   private async answer(key: string, q: Question): Promise<void> {
     const opts = threadOpts(q.threadId);
+    if (this.restarting) {
+      await this.d.out.sendPlain(q.chatId, RESTARTING, opts);
+      return;
+    }
     const abort = new AbortController();
     const draftId = ++this.draftSeq;
-    this.running.set(key, { abort, draftId, title: titleFrom(q.text) });
+    let settled!: () => void;
+    const done = new Promise<void>((resolve) => {
+      settled = resolve;
+    });
+    this.running.set(key, { abort, draftId, title: titleFrom(q.text), done });
     const draft = new DraftStream({
       sink: this.d.out,
       chatId: q.chatId,
@@ -526,6 +547,7 @@ export class BrainApp {
       // A safety net, so the keep-alive timer never outlives the turn; left unawaited.
       void stopDraft();
       this.running.delete(key);
+      settled();
     }
   }
 
@@ -569,6 +591,7 @@ export class BrainApp {
     const reason: unknown = signal?.aborted ? signal.reason : undefined;
     if (reason instanceof TurnCancelled) {
       if (reason.why === 'stopped') await this.d.out.sendPlain(q.chatId, await stopped(), opts);
+      if (reason.why === 'restart') await this.d.out.sendPlain(q.chatId, RESTARTING, opts);
       return;
     }
     if (err instanceof BrainOfflineError) {

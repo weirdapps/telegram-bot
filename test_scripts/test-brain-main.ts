@@ -1,8 +1,13 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { promises as fs } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { startBrain } from '../bridge/src/brain/brainMain.js';
+import {
+  CHANNEL_STOP_WAIT_MS,
+  RESTART_REPLY_WAIT_MS,
+  brainShutdown,
+  startBrain,
+} from '../bridge/src/brain/brainMain.js';
 import { BrainProfileError } from '../bridge/src/brain/profile.js';
 import { createLogger } from '../src/logger/logger.js';
 
@@ -48,5 +53,96 @@ describe('startBrain', () => {
     } finally {
       await fs.rm(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe('brainShutdown', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function harness(o: { cancelAll?: () => Promise<void>; stop?: () => Promise<void> } = {}) {
+    const order: string[] = [];
+    const log = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+    const cancelAll = vi.fn(
+      o.cancelAll ??
+        (async () => {
+          order.push('cancel turns');
+        }),
+    );
+    const stop = vi.fn(
+      o.stop ??
+        (async () => {
+          order.push('stop channel');
+        }),
+    );
+    const closeClients = vi.fn(() => {
+      order.push('close clients');
+    });
+    const exit = vi.fn((_code: number) => {
+      order.push('exit');
+    });
+    const shutdown = brainShutdown({
+      app: { cancelAll },
+      channel: { stop },
+      log,
+      closeClients,
+      exit,
+    });
+    return { shutdown, order, log, cancelAll, stop, closeClients, exit };
+  }
+
+  it('cancels the running turns, then stops the channel, closes the clients and exits 0', async () => {
+    const h = harness();
+    await h.shutdown();
+    expect(h.order).toEqual(['cancel turns', 'stop channel', 'close clients', 'exit']);
+    expect(h.exit).toHaveBeenCalledWith(0);
+    expect(h.log.warn).not.toHaveBeenCalled();
+  });
+
+  it('waits at most 3 s for the restart replies before it stops the channel', async () => {
+    vi.useFakeTimers();
+    const h = harness({ cancelAll: () => new Promise<void>(() => undefined) });
+    const done = h.shutdown();
+    await vi.advanceTimersByTimeAsync(RESTART_REPLY_WAIT_MS - 1);
+    expect(h.stop).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    await done;
+    expect(h.order).toEqual(['stop channel', 'close clients', 'exit']);
+    expect(h.log.warn).toHaveBeenCalledTimes(1);
+  });
+
+  it('exits 0, with a warning, when the channel stop hangs past 5 s', async () => {
+    vi.useFakeTimers();
+    const h = harness({ stop: () => new Promise<void>(() => undefined) });
+    const done = h.shutdown();
+    await vi.advanceTimersByTimeAsync(CHANNEL_STOP_WAIT_MS - 1);
+    expect(h.exit).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    await done;
+    expect(h.order).toEqual(['cancel turns', 'close clients', 'exit']);
+    expect(h.exit).toHaveBeenCalledWith(0);
+    expect(h.log.warn).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('exits 0 when the channel stop fails', async () => {
+    const h = harness({
+      stop: async () => {
+        throw new Error('network down');
+      },
+    });
+    await h.shutdown();
+    expect(h.exit).toHaveBeenCalledWith(0);
+    expect(h.closeClients).toHaveBeenCalledTimes(1);
+    expect(h.log.warn).toHaveBeenCalledWith({ err: 'network down' }, 'channel stop failed');
+  });
+
+  it('runs once, however many signals arrive', async () => {
+    const h = harness();
+    await Promise.all([h.shutdown(), h.shutdown()]);
+    expect(h.cancelAll).toHaveBeenCalledTimes(1);
+    expect(h.stop).toHaveBeenCalledTimes(1);
+    expect(h.exit).toHaveBeenCalledTimes(1);
   });
 });

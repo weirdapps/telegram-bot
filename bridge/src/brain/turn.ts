@@ -50,7 +50,7 @@ export class SilenceError extends Error {
 }
 
 export class TurnCancelled extends Error {
-  constructor(readonly why: 'stopped' | 'closed') {
+  constructor(readonly why: 'stopped' | 'closed' | 'restart') {
     super(`turn ${why}`);
     this.name = 'TurnCancelled';
   }

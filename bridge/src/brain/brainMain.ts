@@ -21,6 +21,60 @@ import { buildBrainOptions, loadBrainProfile } from './profile.js';
 import { SubjectStore } from './subjects.js';
 
 const UPDATES = ['message', 'callback_query', 'stopped_message_generation'] as const;
+/** How long a shutdown waits for the replies of the turns it cancels. */
+export const RESTART_REPLY_WAIT_MS = 3000;
+/** How long a shutdown waits for the channel to stop. */
+export const CHANNEL_STOP_WAIT_MS = 5000;
+
+/** Whether `p` settles within `ms`; a rejection still rejects. The timer never outlives the wait. */
+async function settlesWithin(p: Promise<unknown>, ms: number): Promise<boolean> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      p.then(() => true),
+      new Promise<boolean>((resolve) => {
+        timer = setTimeout(() => resolve(false), ms);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * The SIGINT and SIGTERM handler: running turns tell the owner the bot is restarting, the
+ * channel stops, and the process exits 0, all within about 8 s, well inside systemd's 90 s
+ * before SIGKILL. A second signal joins the shutdown already under way.
+ */
+export function brainShutdown(o: {
+  app: Pick<BrainApp, 'cancelAll'>;
+  channel: Pick<BotApiChannel, 'stop'>;
+  log: BrainLog;
+  closeClients: () => void;
+  exit: (code: number) => void;
+}): () => Promise<void> {
+  let shutdown: Promise<void> | undefined;
+  const run = async (): Promise<void> => {
+    o.log.info({}, 'shutdown signal received');
+    try {
+      // First, while the channel can still send them: "Restarting; please ask again."
+      if (!(await settlesWithin(o.app.cancelAll(), RESTART_REPLY_WAIT_MS))) {
+        o.log.warn({}, 'restart replies still pending; stopping the channel anyway');
+      }
+      // bot.stop() confirms the last update with one more getUpdates, which fails or hangs
+      // with the network down; a stop must still exit 0, or the unit ends failed and alerts.
+      if (!(await settlesWithin(o.channel.stop(), CHANNEL_STOP_WAIT_MS))) {
+        o.log.warn({}, 'channel stop timed out; exiting anyway');
+      }
+    } catch (err) {
+      o.log.warn({ err: err instanceof Error ? err.message : String(err) }, 'channel stop failed');
+    } finally {
+      o.closeClients();
+      o.exit(0);
+    }
+  };
+  return () => (shutdown ??= run());
+}
 
 export async function startBrain(o: {
   logger: Logger;
@@ -100,20 +154,16 @@ export async function startBrain(o: {
     'brain bot listening',
   );
 
-  const shutdown = async (): Promise<void> => {
-    log.info({}, 'shutdown signal received');
-    // bot.stop() confirms the last update with one more getUpdates, which fails with
-    // the network down; a stop must still exit 0, or the unit ends failed and alerts.
-    try {
-      await channel.stop();
-    } catch (err) {
-      log.warn({ err: err instanceof Error ? err.message : String(err) }, 'channel stop failed');
-    } finally {
+  const shutdown = brainShutdown({
+    app,
+    channel,
+    log,
+    closeClients: () => {
       stt.close();
       tts.close();
-      process.exit(0);
-    }
-  };
+    },
+    exit: (code) => process.exit(code),
+  });
   process.on('SIGINT', () => void shutdown());
   process.on('SIGTERM', () => void shutdown());
 }

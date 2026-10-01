@@ -677,6 +677,45 @@ describe('BrainApp', () => {
     }
   });
 
+  it('a restart cancels the running turn, which says so once and stores nothing', async () => {
+    const gate = deferred();
+    const { a, q } = app({ gate: gate.promise, messages: answer('too late', 'id-1') });
+    const p = a.onText(message('long question', { threadId: 7 }));
+    await vi.waitFor(() => expect(q.calls).toHaveLength(1));
+    await a.cancelAll();
+    // Settled only once the reply is out: the shutdown stops the channel after that.
+    expect(out.sent).toEqual([
+      {
+        kind: 'plain',
+        chatId: '500',
+        text: 'Restarting; please ask again.',
+        opts: { threadId: 7 },
+      },
+    ]);
+    await p;
+    expect(out.sent).toHaveLength(1);
+    expect(await store.get('500:7')).toBeUndefined();
+  });
+
+  it('once a restart began, a queued question gets the same reply and never reaches the model', async () => {
+    const gate = deferred();
+    const { a, q } = app(
+      { gate: gate.promise, messages: answer('too late', 'id-1') },
+      answer('never', 'id-1'),
+    );
+    const running = a.onText(message('long question'));
+    const queued = a.onText(message('queued question'));
+    await vi.waitFor(() => expect(q.calls).toHaveLength(1));
+    await a.cancelAll();
+    await Promise.all([running, queued]);
+    expect(out.sent.map((s) => s.text)).toEqual([
+      'Restarting; please ask again.',
+      'Restarting; please ask again.',
+    ]);
+    expect(q.calls).toHaveLength(1);
+    expect(await store.get('500:0')).toBeUndefined();
+  });
+
   it('a Stop after the turn returned does not hide a delivery failure', async () => {
     const { a } = app(answer('Alice owns it.', 'id-1'));
     out.sendRich = async () => {
