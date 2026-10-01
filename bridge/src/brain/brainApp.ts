@@ -24,7 +24,14 @@ import {
 } from './commands.js';
 import { DraftStream, type DraftSink } from './draftStream.js';
 import { KeyedQueue } from './keyedQueue.js';
-import { cut, recordExchange, subjectKey, titleFrom, type SubjectStore } from './subjects.js';
+import {
+  cut,
+  recordExchange,
+  subjectKey,
+  titleFrom,
+  type Subject,
+  type SubjectStore,
+} from './subjects.js';
 import { toTelegramChunks } from './telegramHtml.js';
 import { BrainOfflineError, TurnCancelled, runBrainTurn, type TurnDeps } from './turn.js';
 
@@ -32,6 +39,7 @@ export const NEW_SUBJECT_BUTTON = '🆕 New subject';
 /** How long a queued voice note waits for its transcription, as long as the turn's watchdog. */
 export const TRANSCRIBE_WAIT_MS = 120_000;
 const CALLBACK_PREFIX = 'new:';
+const STALE_BUTTON = 'That subject is already closed.';
 const QUOTE_CHARS = 500;
 
 export interface BrainOutput extends DraftSink {
@@ -107,6 +115,26 @@ async function within<T>(p: Promise<T>, ms: number): Promise<T | null> {
   } finally {
     clearTimeout(timer);
   }
+}
+
+/** The tag on a subject's 🆕 buttons: when it opened, in seconds, base 36. */
+function subjectTag(s: Subject): string {
+  return Math.floor(Date.parse(s.createdAt) / 1000).toString(36);
+}
+
+/** A 🆕 tap: `new:<chat>:<thread>`, then `:<tag>` on the buttons sent since tags. */
+function parseNewButton(
+  data: string,
+): { key: string; chatId: string; threadId?: number; tag?: string } | null {
+  const [, chatId, thread, tag] = /^new:(-?\d+):(\d+)(?::([0-9a-z]+))?$/.exec(data) ?? [];
+  if (chatId === undefined || thread === undefined) return null;
+  const topic = Number(thread);
+  return {
+    key: subjectKey(chatId, topic),
+    chatId,
+    ...(topic !== 0 ? { threadId: topic } : {}),
+    ...(tag !== undefined ? { tag } : {}),
+  };
 }
 
 function textQuestion(m: ChannelMessage, text: string): Question {
@@ -218,16 +246,31 @@ export class BrainApp {
   }
 
   async onCallback(cb: CallbackEvent): Promise<void> {
-    const key = cb.data.startsWith(CALLBACK_PREFIX) ? cb.data.slice(CALLBACK_PREFIX.length) : '';
-    const [chatId, thread] = key.split(':');
-    if (!this.accepts(cb.senderId, cb.chatType) || chatId !== cb.chatId || thread === undefined) {
+    const tap = parseNewButton(cb.data);
+    if (!this.accepts(cb.senderId, cb.chatType) || tap === null || tap.chatId !== cb.chatId) {
       await this.acknowledge(cb.id);
       return;
     }
-    await this.acknowledge(cb.id, 'Closing the subject');
-    const topic = Number(thread);
-    const threadId = topic === 0 ? undefined : topic;
-    await this.guard(cb.chatId, threadId, () => this.close(key, cb.chatId, threadId));
+    await this.guard(cb.chatId, tap.threadId, async () => {
+      let open: Subject | undefined;
+      try {
+        open = tap.tag !== undefined ? await this.d.store.get(tap.key) : undefined;
+      } catch (err) {
+        await this.acknowledge(cb.id);
+        throw err;
+      }
+      // An old button must not close the subject that replaced its own. A button sent before
+      // tags closes whatever is open, as it always did.
+      if (tap.tag !== undefined && (open === undefined || subjectTag(open) !== tap.tag)) {
+        await this.acknowledge(cb.id, STALE_BUTTON);
+        return;
+      }
+      // Not behind the acknowledgement: close() cancels the subject's running turn as it starts.
+      await Promise.all([
+        this.close(tap.key, cb.chatId, tap.threadId, undefined, tap.tag),
+        this.acknowledge(cb.id, 'Closing the subject'),
+      ]);
+    });
   }
 
   onStop(s: StopEvent): void {
@@ -338,16 +381,26 @@ export class BrainApp {
   /**
    * Cancel a running turn of the subject, then close it behind that turn in the queue. `first`
    * opens the fresh subject in the same queue task, so nothing sent meanwhile goes before it.
+   * `tag`, from a 🆕 tap, closes only the subject the button was sent under.
    */
   private async close(
     key: string,
     chatId: string,
     threadId: number | undefined,
     first?: Question,
+    tag?: string,
   ): Promise<void> {
     const inFlight = this.running.get(key);
     inFlight?.abort.abort(new TurnCancelled('closed'));
     await this.queue.run(key, async () => {
+      if (tag !== undefined) {
+        // Another close, and maybe a new subject, may have run while this one waited.
+        const open = await this.d.store.get(key);
+        if (open === undefined || subjectTag(open) !== tag) {
+          await this.d.out.sendPlain(chatId, STALE_BUTTON, threadOpts(threadId));
+          return;
+        }
+      }
       const subject = await this.d.store.remove(key);
       const started = this.sessions.get(key) ?? new Set<string>();
       this.sessions.delete(key);
@@ -442,16 +495,14 @@ export class BrainApp {
         );
         return;
       }
-      await this.d.store.put(
-        key,
-        recordExchange(subject, {
-          question: q.text,
-          answer,
-          sessionId: outcome.sessionId,
-          contextTokens: outcome.contextTokens,
-          now: this.now(),
-        }),
-      );
+      const record = recordExchange(subject, {
+        question: q.text,
+        answer,
+        sessionId: outcome.sessionId,
+        contextTokens: outcome.contextTokens,
+        now: this.now(),
+      });
+      await this.d.store.put(key, record);
       const header = [
         ...(notice ? [notice] : []),
         ...(outcome.rebuilt ? ['(context rebuilt from the chat log)'] : []),
@@ -461,7 +512,7 @@ export class BrainApp {
         : [];
       await this.deliver(
         q,
-        key,
+        `${CALLBACK_PREFIX}${key}:${subjectTag(record)}`,
         [...header, ...(header.length > 0 ? [''] : []), answer, ...footer].join('\n'),
         voiceMode,
       );
@@ -538,14 +589,14 @@ export class BrainApp {
 
   private async deliver(
     q: Question,
-    key: string,
+    buttonData: string,
     text: string,
     voiceMode: VoiceMode,
   ): Promise<void> {
     const base = threadOpts(q.threadId);
     const withButton: SendOptions = {
       ...base,
-      button: { text: NEW_SUBJECT_BUTTON, data: `${CALLBACK_PREFIX}${key}` },
+      button: { text: NEW_SUBJECT_BUTTON, data: buttonData },
     };
     const plan = routeReply({
       replyText: text,

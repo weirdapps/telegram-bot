@@ -13,7 +13,7 @@ import {
 import { DRAFT_STOP_GRACE_MS } from '../bridge/src/brain/draftStream.js';
 import { SubjectStore } from '../bridge/src/brain/subjects.js';
 import type { BotApiChannel } from '../bridge/src/channels/botApiChannel.js';
-import type { ChannelMessage, SendOptions } from '../bridge/src/channels/channel.js';
+import type { CallbackEvent, ChannelMessage, SendOptions } from '../bridge/src/channels/channel.js';
 import { answer, init, planOptions, scriptedQuery, success, type Run } from './brainFakes.js';
 
 interface Sent {
@@ -94,6 +94,16 @@ const message = (text: string, over: Partial<ChannelMessage> = {}): ChannelMessa
   text,
   ...over,
 });
+/** The 🆕 data under a sent message. */
+const buttonOf = (s: Sent): string => s.opts.button?.data ?? '';
+/** The owner's tap, in the owner's chat, on a 🆕 carrying `data`. */
+const tapOn = (data: string, id = 'cb'): CallbackEvent => ({
+  id,
+  data,
+  senderId: OWNER,
+  chatId: '500',
+  chatType: 'private',
+});
 const tick = () => new Promise((r) => setTimeout(r, 0));
 const deferred = () => {
   let resolve!: () => void;
@@ -167,13 +177,23 @@ describe('BrainApp', () => {
   it('answers a question in its topic and offers the 🆕 button', async () => {
     const { a } = app(answer('Alice owns it.', 'id-1'));
     await a.onText(message('Who owns the budget?', { threadId: 7 }));
+    // The subject's tag: when it opened, in seconds, base 36.
+    const tag = (now.getTime() / 1000).toString(36);
     expect(out.last()).toMatchObject({
       kind: 'rich',
       text: 'Alice owns it.',
-      opts: { threadId: 7, button: { text: NEW_SUBJECT_BUTTON, data: 'new:500:7' } },
+      opts: { threadId: 7, button: { text: NEW_SUBJECT_BUTTON, data: `new:500:7:${tag}` } },
     });
     expect(out.drafts[0]).toMatchObject({ threadId: 7, text: '' });
     expect((await store.get('500:7'))?.sessionId).toBe('id-1');
+  });
+
+  it('keeps the 🆕 data within the 64 bytes Telegram allows, for the largest ids', async () => {
+    const { a } = app(answer('ok', 'id-1'));
+    await a.onText(
+      message('q', { chatId: String(Number.MAX_SAFE_INTEGER), threadId: 2 ** 31 - 1 }),
+    );
+    expect(Buffer.byteLength(buttonOf(out.last()))).toBeLessThanOrEqual(64);
   });
 
   it('resumes the same session for a follow-up', async () => {
@@ -220,6 +240,7 @@ describe('BrainApp', () => {
   it('the 🆕 button closes its own subject and ignores another chat', async () => {
     const { a } = app(answer('A', 'id-1'));
     await a.onText(message('question'));
+    // Data without a tag, as on buttons sent before tags: they close whatever is open.
     await a.onCallback({
       id: 'cb1',
       data: 'new:999:0',
@@ -237,6 +258,62 @@ describe('BrainApp', () => {
     });
     expect(await store.get('500:0')).toBeUndefined();
     expect(out.callbacks.map((c) => c.id)).toEqual(['cb1', 'cb2']);
+  });
+
+  it('an old 🆕 button closes nothing once its subject is closed; the current one still closes', async () => {
+    const { a } = app(answer('Answer A', 'id-1'), answer('Answer B', 'id-2'));
+    await a.onText(message('Question A'));
+    const oldButton = buttonOf(out.last());
+    await a.onText(message('/new'));
+    now = new Date(now.getTime() + 60_000);
+    await a.onText(message('Question B'));
+    deleteSession.mockClear();
+    const sent = out.sent.length;
+    await a.onCallback(tapOn(oldButton, 'old'));
+    expect(out.callbacks).toEqual([{ id: 'old', text: 'That subject is already closed.' }]);
+    expect(out.sent).toHaveLength(sent);
+    expect(deleteSession).not.toHaveBeenCalled();
+    expect(await store.get('500:0')).toMatchObject({ sessionId: 'id-2', title: 'Question B' });
+    await a.onCallback(tapOn(buttonOf(out.last()), 'current'));
+    expect(out.callbacks.at(-1)).toEqual({ id: 'current', text: 'Closing the subject' });
+    expect(out.last().text).toBe('Closed: «Question B», 1 question.');
+    expect(deleteSession.mock.calls).toEqual([['id-2']]);
+  });
+
+  it('a tap on the old 🆕 waiting behind "/new X" does not close X', async () => {
+    let transcribed!: () => void;
+    transcribe = () =>
+      new Promise<Heard>((resolve) => {
+        transcribed = () => resolve(heard('and the forecast?'));
+      });
+    await store.setVoiceMode('off'); // every reply in text
+    const { a } = app(
+      answer('Answer A', 'id-1'),
+      answer('Forecast A', 'id-1'),
+      answer('Answer X', 'id-2'),
+    );
+    await a.onText(message('Question A'));
+    const oldButton = buttonOf(out.last());
+    now = new Date(now.getTime() + 60_000);
+    // A voice note holds the subject's queue while it is transcribed, with no turn to cancel.
+    const voice = a.onVoice(message('', { mediaPath: '/tmp/note.ogg' }));
+    const closing = a.onText(message('/new Question X'));
+    const tapping = a.onCallback(tapOn(oldButton, 'old'));
+    // A is still open when the tap is checked, so its close queues behind "/new Question X".
+    await vi.waitFor(() =>
+      expect(out.callbacks).toEqual([{ id: 'old', text: 'Closing the subject' }]),
+    );
+    transcribed();
+    await Promise.all([voice, closing, tapping]);
+    expect(out.sent.map((s) => s.text)).toEqual([
+      'Answer A',
+      'Forecast A',
+      'Closed: «Question A», 2 questions.',
+      'Answer X',
+      'That subject is already closed.',
+    ]);
+    expect(await store.get('500:0')).toMatchObject({ sessionId: 'id-2', title: 'Question X' });
+    expect(deleteSession.mock.calls).toEqual([['id-1']]);
   });
 
   it('says the brain is offline instead of answering, and stores nothing', async () => {
