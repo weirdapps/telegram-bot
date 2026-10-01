@@ -18,7 +18,7 @@ import { BRAIN_ALLOWED_TOOLS, BRAIN_SERVER, type TurnPlan } from './profile.js';
 import { cut, rebuildSeed, type Subject } from './subjects.js';
 
 export const SILENCE_MS = 120_000;
-/** A spurious refusal is a sentence or two; a longer answer that uses a marker phrase is an answer. */
+/** A spurious refusal is a sentence or two; a longer answer that uses a marker phrase answers. */
 export const REFUSAL_MAX_CHARS = 400;
 
 export type TurnEvent =
@@ -114,8 +114,9 @@ function isMissingSession(text: string): boolean {
 }
 
 /**
- * The general bridge's refusal heuristic, held to short answers: here a false positive moves the
- * subject to a fresh session rebuilt from its log. A silent refusal has no text, so it still counts.
+ * The general bridge's refusal heuristic, held to short answers: here a false positive moves
+ * the subject to a fresh session rebuilt from its log. A silent refusal has no text, so it
+ * still counts.
  */
 function isRefusal(r: SDKResultMessage): boolean {
   return (

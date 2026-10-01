@@ -26,7 +26,7 @@ export const RESTART_REPLY_WAIT_MS = 3000;
 /** How long a shutdown waits for the channel to stop. */
 export const CHANNEL_STOP_WAIT_MS = 5000;
 
-/** Whether `p` settles within `ms`; a rejection still rejects. The timer never outlives the wait. */
+/** Whether `p` settles within `ms`; a rejection rejects. The timer never outlives the wait. */
 async function settlesWithin(p: Promise<unknown>, ms: number): Promise<boolean> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {

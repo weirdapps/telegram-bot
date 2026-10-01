@@ -713,7 +713,8 @@ describe('BrainApp', () => {
     await a.onText(message('first question'));
     const p2 = a.onText(message('second question'));
     await tick();
-    a.onStop({ chatId: '500', draftId: out.draftId(0) }); // tapped as the first answer landed, handled late
+    // Tapped as the first answer landed, and handled late.
+    a.onStop({ chatId: '500', draftId: out.draftId(0) });
     second.resolve();
     await p2;
     expect(out.last().text).toBe('second');
@@ -788,7 +789,8 @@ describe('BrainApp', () => {
   it('a Stop after the turn returned does not hide a delivery failure', async () => {
     const { a } = app(answer('Alice owns it.', 'id-1'));
     out.sendRich = async () => {
-      a.onStop({ chatId: '500', draftId: out.draftId(0) }); // the owner taps Stop as the answer goes out
+      // The owner taps Stop as the answer goes out.
+      a.onStop({ chatId: '500', draftId: out.draftId(0) });
       throw new Error('Telegram is down');
     };
     await a.onText(message('Who owns the budget?'));
