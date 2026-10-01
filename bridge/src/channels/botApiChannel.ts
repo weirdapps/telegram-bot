@@ -55,6 +55,8 @@ export interface BotApiChannelOpts {
   botFactory?: BotFactory;
   /** Update types to request from Telegram; unset keeps Telegram's default. */
   allowedUpdates?: readonly string[];
+  /** Called when polling stops on its own (a 401, a 409, a middleware throw); unset, it is only logged. */
+  onPollingStopped?: (err: unknown) => void;
 }
 
 /** Topic, replied-to text and chat type of an incoming message, when present. */
@@ -110,9 +112,11 @@ export class BotApiChannel implements Channel {
   private readonly tmpDir: string;
   private readonly logger?: Logger;
   private readonly allowedUpdates?: readonly string[];
+  private readonly onPollingStopped?: (err: unknown) => void;
   private textHandler?: ChannelTextHandler;
   private voiceHandler?: ChannelVoiceHandler;
   private started = false;
+  private stopRequested = false;
 
   constructor(opts: BotApiChannelOpts) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -124,6 +128,7 @@ export class BotApiChannel implements Channel {
       this.logger = opts.logger;
     }
     if (opts.allowedUpdates !== undefined) this.allowedUpdates = opts.allowedUpdates;
+    if (opts.onPollingStopped !== undefined) this.onPollingStopped = opts.onPollingStopped;
     mkdirSync(this.tmpDir, { recursive: true });
 
     this.bot.on('message:text', (ctx: Context) => {
@@ -178,6 +183,7 @@ export class BotApiChannel implements Channel {
   async start(): Promise<void> {
     if (this.started) return;
     this.started = true;
+    this.stopRequested = false;
     // bot.start() blocks until stop() — fire-and-forget with error logging.
     // If grammy throws (e.g. 409 Conflict when another poller holds the token),
     // revert the started flag and surface the error so the caller (or operator
@@ -198,11 +204,14 @@ export class BotApiChannel implements Channel {
           { component: 'botApiChannel', err: err instanceof Error ? err.message : String(err) },
           'bot.start() failed — polling not active',
         );
+        // A stop() during start's setup also rejects it; that one was asked for.
+        if (!this.stopRequested) this.onPollingStopped?.(err);
       });
   }
 
   async stop(): Promise<void> {
     if (!this.started) return;
+    this.stopRequested = true;
     await this.bot.stop();
     this.started = false;
   }

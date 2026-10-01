@@ -273,6 +273,50 @@ describe('BotApiChannel brain support', () => {
     expect(bot.on.mock.calls.map(([event]) => event)).toEqual(['message:text', 'message:voice']);
   });
 
+  it('a polling failure calls onPollingStopped with the error, after logging it', async () => {
+    const { bot } = fakeBot();
+    const err = new Error('409: Conflict');
+    bot.start.mockRejectedValueOnce(err);
+    const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+    const stopped = vi.fn((_err: unknown) => undefined);
+    await channelWith(bot, { logger: logger as never, onPollingStopped: stopped }).start();
+    await vi.waitFor(() => expect(stopped).toHaveBeenCalledWith(err));
+    expect(logger.error.mock.invocationCallOrder[0]).toBeLessThan(
+      stopped.mock.invocationCallOrder[0] ?? 0,
+    );
+  });
+
+  it('a start that fails after stop() was asked for is not a polling failure', async () => {
+    const { bot } = fakeBot();
+    let fail!: (err: unknown) => void;
+    bot.start.mockReturnValueOnce(
+      new Promise<undefined>((_resolve, reject) => {
+        fail = reject;
+      }),
+    );
+    const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+    const stopped = vi.fn((_err: unknown) => undefined);
+    const ch = channelWith(bot, { logger: logger as never, onPollingStopped: stopped });
+    await ch.start();
+    await ch.stop();
+    // grammY rejects start() this way when stop() lands during its setup.
+    fail(new Error('Aborted delay'));
+    await vi.waitFor(() => expect(logger.error).toHaveBeenCalledTimes(1));
+    expect(stopped).not.toHaveBeenCalled();
+  });
+
+  it('without onPollingStopped, a polling failure is only logged, as before', async () => {
+    const { bot } = fakeBot();
+    bot.start.mockRejectedValueOnce(new Error('401: Unauthorized'));
+    const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+    const ch = channelWith(bot, { logger: logger as never });
+    await ch.start();
+    await vi.waitFor(() => expect(logger.error).toHaveBeenCalledTimes(1));
+    // The started flag was reset, so a later start() polls again.
+    await ch.start();
+    expect(bot.start).toHaveBeenCalledTimes(2);
+  });
+
   it('answers callbacks and sets the command menu', async () => {
     const { bot, api } = fakeBot();
     const ch = channelWith(bot);

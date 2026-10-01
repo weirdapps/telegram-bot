@@ -33,6 +33,8 @@ export async function startBrain(o: {
   if (!token) throw new Error('TELEGRAM_BOT_TOKEN is required for the brain profile');
   const allowed = parseAllowlist(env.TELEGRAM_BRIDGE_ALLOWED_SENDER_IDS);
   mkdirSync(dirname(profile.statePath), { recursive: true, mode: 0o700 });
+  // The SDK spawns the CLI here without checking: a missing directory fails every turn as a launch error.
+  mkdirSync(profile.cwd, { recursive: true, mode: 0o700 });
 
   const log: BrainLog = {
     info: (obj, msg) => o.logger.info({ component: 'brain', ...obj }, msg),
@@ -46,6 +48,14 @@ export async function startBrain(o: {
     tmpDir: env.TELEGRAM_BRIDGE_BOT_TMPDIR ?? `${dirname(profile.statePath)}/inbox`,
     logger: o.logger,
     allowedUpdates: UPDATES,
+    // A bot that stops polling but stays up is never restarted: exit, and the unit restarts it.
+    onPollingStopped: (err) => {
+      log.error(
+        { err: err instanceof Error ? err.message : String(err) },
+        'polling stopped; exiting so systemd restarts the bot',
+      );
+      process.exit(1);
+    },
   });
   const app = new BrainApp({
     out: channel,
@@ -57,6 +67,7 @@ export async function startBrain(o: {
       warn: (message, data) => log.warn(data ?? {}, message),
     },
     deleteSession: (id) => deleteSession(id, { dir: profile.cwd }),
+    discard: (path) => fs.unlink(path).catch(() => undefined),
     transcribe: (path) => transcribeNote(path, o.voiceCfg, stt),
     synthesize: (text, language) => synthesize(text, language, o.voiceCfg.voiceConfig, tts),
     maxAudioSeconds: o.voiceCfg.maxAudioSeconds,
@@ -91,10 +102,17 @@ export async function startBrain(o: {
 
   const shutdown = async (): Promise<void> => {
     log.info({}, 'shutdown signal received');
-    await channel.stop();
-    stt.close();
-    tts.close();
-    process.exit(0);
+    // bot.stop() confirms the last update with one more getUpdates, which fails with
+    // the network down; a stop must still exit 0, or the unit ends failed and alerts.
+    try {
+      await channel.stop();
+    } catch (err) {
+      log.warn({ err: err instanceof Error ? err.message : String(err) }, 'channel stop failed');
+    } finally {
+      stt.close();
+      tts.close();
+      process.exit(0);
+    }
   };
   process.on('SIGINT', () => void shutdown());
   process.on('SIGTERM', () => void shutdown());

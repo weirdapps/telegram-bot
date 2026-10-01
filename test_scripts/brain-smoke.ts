@@ -1,7 +1,7 @@
 // Live smoke for the brain profile: the real SDK and the real second-brain HTTP
 // MCP, no Telegram. Run on the host, with the brain env and the Vertex env loaded
 // (Task B11 has the exact command). Prints each answer with its timings.
-import { mkdtempSync } from 'node:fs';
+import { mkdirSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { deleteSession, getSessionInfo, query } from '@anthropic-ai/claude-agent-sdk';
@@ -10,6 +10,8 @@ import { buildBrainOptions, loadBrainProfile } from '../bridge/src/brain/profile
 import { SubjectStore } from '../bridge/src/brain/subjects.js';
 
 const profile = loadBrainProfile();
+// As startBrain does: the SDK spawns the CLI in this directory without checking it exists.
+mkdirSync(profile.cwd, { recursive: true, mode: 0o700 });
 let started = 0;
 let firstDraftMs = 0;
 const seconds = (): string => ((Date.now() - started) / 1000).toFixed(1);

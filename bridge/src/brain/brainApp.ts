@@ -57,6 +57,8 @@ export interface BrainAppDeps {
   store: SubjectStore;
   turn: Omit<TurnDeps, 'onEvent'>;
   deleteSession: (sessionId: string) => Promise<void>;
+  /** Deletes a downloaded voice note the bot refuses; without it, the file stays where it is. */
+  discard?: (mediaPath: string) => Promise<void>;
   transcribe: (mediaPath: string) => Promise<{ text: string; language: SupportedLanguage }>;
   synthesize: (
     text: string,
@@ -149,7 +151,11 @@ export class BrainApp {
   }
 
   async onVoice(m: ChannelMessage): Promise<void> {
-    if (!this.accepts(m.senderId, m.chatType)) return this.reject(m.senderId, m.chatId);
+    if (!this.accepts(m.senderId, m.chatType)) {
+      // Always, keepAudioFiles notwithstanding: that setting is for the owner's own notes.
+      if (m.mediaPath) void this.d.discard?.(m.mediaPath);
+      return this.reject(m.senderId, m.chatId);
+    }
     const opts = threadOpts(m.threadId);
     if (!m.mediaPath) {
       await this.d.out.sendPlain(

@@ -108,6 +108,7 @@ describe('BrainApp', () => {
   let out: FakeOut;
   let now: Date;
   let deleteSession: Mock<(sessionId: string) => Promise<void>>;
+  let discard: Mock<(mediaPath: string) => Promise<void>>;
   let transcribe: BrainAppDeps['transcribe'];
   let log: Record<'info' | 'warn' | 'error', Mock<LogFn>>;
 
@@ -117,6 +118,7 @@ describe('BrainApp', () => {
     out = new FakeOut();
     now = new Date('2026-10-01T10:00:00Z');
     deleteSession = vi.fn(async (_id: string) => undefined);
+    discard = vi.fn(async (_path: string) => undefined);
     transcribe = async () => ({ text: 'spoken question', language: 'el-GR' });
     log = { info: vi.fn<LogFn>(), warn: vi.fn<LogFn>(), error: vi.fn<LogFn>() };
   });
@@ -141,6 +143,7 @@ describe('BrainApp', () => {
         silenceMs: 2000,
       },
       deleteSession,
+      discard,
       transcribe: (path) => transcribe(path),
       synthesize: async () => ({ audio: Buffer.from('ogg'), durationSeconds: 3 }),
       maxAudioSeconds: 60,
@@ -286,6 +289,16 @@ describe('BrainApp', () => {
     await a.onText(message('hi', { chatType: 'group' }));
     expect(q.calls).toHaveLength(0);
     expect(out.sent).toHaveLength(0);
+  });
+
+  it('discards the voice notes it rejects, and never one it answers', async () => {
+    const { a, q } = app(answer('Σύντομη απάντηση.', 'id-1'));
+    await a.onVoice(message('', { senderId: '666', mediaPath: '/tmp/stranger.ogg' }));
+    await a.onVoice(message('', { chatType: 'group', mediaPath: '/tmp/group.ogg' }));
+    expect(discard.mock.calls).toEqual([['/tmp/stranger.ogg'], ['/tmp/group.ogg']]);
+    await a.onVoice(message('', { mediaPath: '/tmp/owner.ogg' }));
+    expect(q.calls).toHaveLength(1);
+    expect(discard).toHaveBeenCalledTimes(2);
   });
 
   it('picks the subject up again after a restart', async () => {
