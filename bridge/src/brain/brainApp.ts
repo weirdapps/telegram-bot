@@ -29,6 +29,8 @@ import { toTelegramChunks } from './telegramHtml.js';
 import { BrainOfflineError, TurnCancelled, runBrainTurn, type TurnDeps } from './turn.js';
 
 export const NEW_SUBJECT_BUTTON = '🆕 New subject';
+/** How long a queued voice note waits for its transcription, as long as the turn's watchdog. */
+export const TRANSCRIBE_WAIT_MS = 120_000;
 const CALLBACK_PREFIX = 'new:';
 const QUOTE_CHARS = 500;
 
@@ -88,6 +90,21 @@ function threadOf(m: { threadId?: number }): { threadId?: number } {
 function errorText(err: unknown): string {
   const raw = err instanceof Error ? err.message : String(err);
   return cut(raw.replace(/\s+/g, ' '), 300);
+}
+
+/** The value of `p`, or null if `ms` passes first; the timer never outlives the wait. */
+async function within<T>(p: Promise<T>, ms: number): Promise<T | null> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      p,
+      new Promise<null>((resolve) => {
+        timer = setTimeout(() => resolve(null), ms);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 function textQuestion(m: ChannelMessage, text: string): Question {
@@ -150,7 +167,17 @@ export class BrainApp {
     );
     const key = subjectKey(m.chatId, m.threadId);
     await this.queue.run(key, async () => {
-      const r = await heard;
+      const r = await within(heard, TRANSCRIBE_WAIT_MS);
+      if (r === null) {
+        // The queue moves on; a late result is dropped, as the owner is asked to resend.
+        this.d.log.warn({ chatId: m.chatId }, 'voice transcription timed out');
+        await this.d.out.sendPlain(
+          m.chatId,
+          'Voice transcription timed out. Please send it again, or type the question.',
+          opts,
+        );
+        return;
+      }
       if (!r.ok) {
         await this.d.out.sendPlain(
           m.chatId,

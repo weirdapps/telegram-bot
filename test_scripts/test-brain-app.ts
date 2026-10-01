@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import {
   BrainApp,
   NEW_SUBJECT_BUTTON,
+  TRANSCRIBE_WAIT_MS,
   promptFor,
   type BrainAppDeps,
   type BrainOutput,
@@ -530,6 +531,38 @@ describe('BrainApp', () => {
     out.sendPlain = down; // then the error reply, in failure()
     const { a } = app(answer('Alice owns it.', 'id-1'));
     await expect(a.onText(message('Who owns the budget?'))).rejects.toThrow('Telegram is down');
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('a stuck transcription times out and the text queued behind it is answered', async () => {
+    vi.useFakeTimers();
+    transcribe = () => new Promise<Heard>(() => undefined);
+    const { a, q } = app(answer('typed answer', 'id-1'));
+    const voice = a.onVoice(message('', { mediaPath: '/tmp/note.ogg', threadId: 7 }));
+    const text = a.onText(message('typed question', { threadId: 7 }));
+    await vi.advanceTimersByTimeAsync(TRANSCRIBE_WAIT_MS - 1);
+    expect(out.sent).toHaveLength(0);
+    expect(q.calls).toHaveLength(0);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(out.sent).toEqual([
+      {
+        kind: 'plain',
+        chatId: '500',
+        text: 'Voice transcription timed out. Please send it again, or type the question.',
+        opts: { threadId: 7 },
+      },
+    ]);
+    expect(log.warn).toHaveBeenCalledWith({ chatId: '500' }, expect.any(String));
+    await Promise.all([voice, text]);
+    expect(q.calls.map((c) => c.prompt)).toEqual(['typed question']);
+    expect(out.last().text).toBe('typed answer');
+  });
+
+  it('a voice note transcribed in time leaves no wait timer running', async () => {
+    vi.useFakeTimers();
+    const { a } = app(answer('Σύντομη απάντηση.', 'id-1'));
+    await a.onVoice(message('', { mediaPath: '/tmp/note.ogg' }));
+    expect(out.last().kind).toBe('voice');
     expect(vi.getTimerCount()).toBe(0);
   });
 });
