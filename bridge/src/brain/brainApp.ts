@@ -24,7 +24,7 @@ import {
 } from './commands.js';
 import { DraftStream, type DraftSink } from './draftStream.js';
 import { KeyedQueue } from './keyedQueue.js';
-import { cut, recordExchange, subjectKey, type SubjectStore } from './subjects.js';
+import { cut, recordExchange, subjectKey, titleFrom, type SubjectStore } from './subjects.js';
 import { toTelegramChunks } from './telegramHtml.js';
 import { BrainOfflineError, TurnCancelled, runBrainTurn, type TurnDeps } from './turn.js';
 
@@ -134,7 +134,12 @@ export function promptFor(q: Question, voiceMode: VoiceMode): string {
 
 export class BrainApp {
   private readonly queue: KeyedQueue;
-  private readonly running = new Map<string, { abort: AbortController; draftId: number }>();
+  private readonly running = new Map<
+    string,
+    { abort: AbortController; draftId: number; title: string }
+  >();
+  /** Each subject's sessions started or resumed since its last close, which deletes them all. */
+  private readonly sessions = new Map<string, Set<string>>();
   // From a random start in [1, 2^30): a Stop that Telegram queued while the bot was down then
   // cannot match the first draft after the restart.
   private draftSeq = 1 + Math.floor(Math.random() * (2 ** 30 - 1));
@@ -340,22 +345,41 @@ export class BrainApp {
     threadId: number | undefined,
     first?: Question,
   ): Promise<void> {
-    this.running.get(key)?.abort.abort(new TurnCancelled('closed'));
+    const inFlight = this.running.get(key);
+    inFlight?.abort.abort(new TurnCancelled('closed'));
     await this.queue.run(key, async () => {
       const subject = await this.d.store.remove(key);
-      if (subject) {
-        try {
-          await this.d.deleteSession(subject.sessionId);
-        } catch (err) {
-          this.d.log.warn(
-            { err: errorText(err) },
-            'transcript not deleted; the 30-day sweep will remove it',
-          );
-        }
+      const started = this.sessions.get(key) ?? new Set<string>();
+      this.sessions.delete(key);
+      if (subject) await this.deleteTranscript(subject.sessionId);
+      for (const id of started) {
+        // Only where the CLI wrote one: an attempt can end before it writes anything.
+        if (id !== subject?.sessionId) await this.deleteTranscript(id, true);
       }
-      await this.d.out.sendPlain(chatId, closedText(subject), threadOpts(threadId));
+      // A first answer this close cancelled stored nothing, yet it is the subject being closed.
+      const closed = subject ?? (inFlight ? { title: inFlight.title, questions: 1 } : undefined);
+      await this.d.out.sendPlain(chatId, closedText(closed), threadOpts(threadId));
       if (first) await this.answer(key, first);
     });
+  }
+
+  /** Best effort: a transcript left behind goes in the CLI's 30-day sweep. */
+  private async deleteTranscript(sessionId: string, onlyIfWritten = false): Promise<void> {
+    try {
+      if (onlyIfWritten && !(await this.d.turn.sessionExists(sessionId))) return;
+      await this.d.deleteSession(sessionId);
+    } catch (err) {
+      this.d.log.warn(
+        { err: errorText(err) },
+        'transcript not deleted; the 30-day sweep will remove it',
+      );
+    }
+  }
+
+  private remember(key: string, sessionId: string): void {
+    const ids = this.sessions.get(key) ?? new Set<string>();
+    ids.add(sessionId);
+    this.sessions.set(key, ids);
   }
 
   private async ask(q: Question): Promise<void> {
@@ -367,7 +391,7 @@ export class BrainApp {
     const opts = threadOpts(q.threadId);
     const abort = new AbortController();
     const draftId = ++this.draftSeq;
-    this.running.set(key, { abort, draftId });
+    this.running.set(key, { abort, draftId, title: titleFrom(q.text) });
     const draft = new DraftStream({
       sink: this.d.out,
       chatId: q.chatId,
@@ -379,16 +403,25 @@ export class BrainApp {
     let stopping: Promise<void> | undefined;
     const stopDraft = (): Promise<void> => (stopping ??= draft.stop());
     let turnDone = false;
+    // A question with no subject yet, and the session of its latest attempt: what a Stop keeps.
+    let firstTurn = false;
+    let session: string | undefined;
     draft.start();
     try {
       // Read inside the try: an unreadable subject store still gets the owner a reply.
       const subject = await this.d.store.get(key);
+      firstTurn = subject === undefined;
       const voiceMode = await this.d.store.voiceMode();
       const notice = subject ? idleNotice(subject, this.now()) : null;
       const outcome = await runBrainTurn(
         { prompt: promptFor(q, voiceMode), subject, abort: abort.signal },
         {
           ...this.d.turn,
+          buildOptions: (plan, ctl) => {
+            session = plan.sessionId ?? plan.resume;
+            if (session !== undefined) this.remember(key, session);
+            return this.d.turn.buildOptions(plan, ctl);
+          },
           onEvent: (e) =>
             e.kind === 'tool' ? draft.tool(e.name, e.detail) : draft.setText(e.text),
         },
@@ -435,7 +468,9 @@ export class BrainApp {
     } catch (err) {
       await stopDraft();
       // A Stop or close that lands after the turn returned must not hide a later failure.
-      await this.failure(err, q, turnDone ? undefined : abort.signal);
+      await this.failure(err, q, turnDone ? undefined : abort.signal, () =>
+        firstTurn ? this.keepStopped(key, q, session) : Promise.resolve('Stopped.'),
+      );
     } finally {
       // A safety net, so the keep-alive timer never outlives the turn; left unawaited.
       void stopDraft();
@@ -443,12 +478,46 @@ export class BrainApp {
     }
   }
 
+  /**
+   * A stopped first answer has no subject yet: its session becomes one, so the next question
+   * resumes it, when the CLI wrote a transcript to resume. Returns the reply to the Stop.
+   */
+  private async keepStopped(
+    key: string,
+    q: Question,
+    sessionId: string | undefined,
+  ): Promise<string> {
+    try {
+      if (sessionId !== undefined && (await this.d.turn.sessionExists(sessionId))) {
+        await this.d.store.put(
+          key,
+          recordExchange(undefined, {
+            question: q.text,
+            answer: '(stopped)',
+            sessionId,
+            contextTokens: 0,
+            now: this.now(),
+          }),
+        );
+        return 'Stopped.';
+      }
+    } catch (err) {
+      this.d.log.warn({ err: errorText(err) }, 'stopped subject not kept');
+    }
+    return 'Stopped. Nothing was kept; your next question starts fresh.';
+  }
+
   /** `signal` only while the turn had not returned: after that, every error is a real failure. */
-  private async failure(err: unknown, q: Question, signal: AbortSignal | undefined): Promise<void> {
+  private async failure(
+    err: unknown,
+    q: Question,
+    signal: AbortSignal | undefined,
+    stopped: () => Promise<string>,
+  ): Promise<void> {
     const opts = threadOpts(q.threadId);
     const reason: unknown = signal?.aborted ? signal.reason : undefined;
     if (reason instanceof TurnCancelled) {
-      if (reason.why === 'stopped') await this.d.out.sendPlain(q.chatId, 'Stopped.', opts);
+      if (reason.why === 'stopped') await this.d.out.sendPlain(q.chatId, await stopped(), opts);
       return;
     }
     if (err instanceof BrainOfflineError) {

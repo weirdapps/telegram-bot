@@ -117,6 +117,7 @@ describe('BrainApp', () => {
   let deleteSession: Mock<(sessionId: string) => Promise<void>>;
   let discard: Mock<(mediaPath: string) => Promise<void>>;
   let transcribe: BrainAppDeps['transcribe'];
+  let sessionExists: (sessionId: string) => Promise<boolean>;
   let log: Record<'info' | 'warn' | 'error', Mock<LogFn>>;
 
   beforeEach(async () => {
@@ -127,6 +128,7 @@ describe('BrainApp', () => {
     deleteSession = vi.fn(async (_id: string) => undefined);
     discard = vi.fn(async (_path: string) => undefined);
     transcribe = async () => ({ text: 'spoken question', language: 'el-GR' });
+    sessionExists = async () => true;
     log = { info: vi.fn<LogFn>(), warn: vi.fn<LogFn>(), error: vi.fn<LogFn>() };
   });
 
@@ -143,7 +145,7 @@ describe('BrainApp', () => {
       store,
       turn: {
         query: q.fn,
-        sessionExists: async () => true,
+        sessionExists: (id) => sessionExists(id),
         buildOptions: planOptions,
         warn: () => undefined,
         newId: () => `id-${++n}`,
@@ -261,26 +263,96 @@ describe('BrainApp', () => {
     expect(q.calls[1]?.options.resume).toBe('id-1');
   });
 
-  it('Stop aborts the running turn, says so, and keeps no half answer', async () => {
+  it('Stop on a first answer keeps its session as the subject, so a follow-up resumes it', async () => {
     const gate = deferred();
-    const { a } = app({ gate: gate.promise, messages: answer('too late', 'id-1') });
-    const p = a.onText(message('long question'));
+    const { a, q } = app(
+      { gate: gate.promise, messages: answer('too late', 'id-1') },
+      answer('Last week: two replies.', 'id-1'),
+    );
+    const p = a.onText(message('Summarise everything about the 2027 budget'));
     await tick();
     a.onStop({ chatId: '500', draftId: out.draftId(0) });
     await p;
     expect(out.last().text).toBe('Stopped.');
-    expect(await store.get('500:0')).toBeUndefined();
-    a.onStop({ chatId: '500', draftId: out.draftId(0) });
+    // The half answer is not kept: the log records the question as stopped.
+    expect(await store.get('500:0')).toMatchObject({
+      sessionId: 'id-1',
+      title: 'Summarise everything about the 2027 budget',
+      questions: 1,
+      log: [{ q: 'Summarise everything about the 2027 budget', a: '(stopped)' }],
+    });
+    a.onStop({ chatId: '500', draftId: out.draftId(0) }); // a late second tap stops nothing
+    await a.onText(message('just the last week'));
+    expect(q.calls[1]).toMatchObject({ prompt: 'just the last week', options: { resume: 'id-1' } });
+    expect(out.last().text).toBe('Last week: two replies.');
   });
 
-  it('/new during a turn cancels it quietly and closes', async () => {
+  it('Stop on a first answer whose session was never written keeps nothing, and says so', async () => {
+    sessionExists = async () => false;
     const gate = deferred();
     const { a } = app({ gate: gate.promise, messages: answer('too late', 'id-1') });
     const p = a.onText(message('long question'));
     await tick();
+    a.onStop({ chatId: '500', draftId: out.draftId(0) });
+    await p;
+    expect(out.last().text).toBe('Stopped. Nothing was kept; your next question starts fresh.');
+    expect(await store.get('500:0')).toBeUndefined();
+  });
+
+  it('/new during a first answer closes that subject: says what closed, deletes its transcript', async () => {
+    const gate = deferred();
+    const { a } = app({ gate: gate.promise, messages: answer('too late', 'id-1') });
+    const p = a.onText(message('Summarise everything about the 2027 budget'));
+    await tick();
     await a.onText(message('/new'));
     await p;
-    expect(out.sent.map((s) => s.text)).toEqual(['Nothing to close: no open subject here.']);
+    expect(out.sent.map((s) => s.text)).toEqual([
+      'Closed: «Summarise everything about the 2027 budget», 1 question.',
+    ]);
+    expect(deleteSession.mock.calls).toEqual([['id-1']]);
+    expect(await store.get('500:0')).toBeUndefined();
+  });
+
+  it('a close deletes the transcript of every session its turns started, then forgets them', async () => {
+    const { a } = app(
+      answer('The committee met on 12 September.', 'id-1'),
+      // Short, with a refusal phrase: retried on the fallback tier, in a new session.
+      answer('The committee approved the new AI usage policies on 12 September.', 'id-1'),
+      answer('It approved the new AI usage policies.', 'id-2'),
+      answer('A fresh subject.', 'id-3'),
+    );
+    await a.onText(message('When did the AI committee meet?'));
+    await a.onText(message('What did it decide?'));
+    expect((await store.get('500:0'))?.sessionId).toBe('id-2');
+    await a.onText(message('/new'));
+    expect(deleteSession.mock.calls.map(([id]) => id).sort()).toEqual(['id-1', 'id-2']);
+    deleteSession.mockClear();
+    await a.onText(message('Another question'));
+    await a.onText(message('/new'));
+    expect(deleteSession.mock.calls).toEqual([['id-3']]);
+  });
+
+  it('after a restart, a close also deletes the session a retried follow-up resumed', async () => {
+    const before = app(answer('The committee met on 12 September.', 'stored-1'));
+    await before.a.onText(message('When did the AI committee meet?'));
+    store = new SubjectStore(join(dir, 'subjects.json')); // a new process reads the file afresh
+    const after = app(
+      answer('The committee approved the new AI usage policies.', 'stored-1'),
+      answer('It approved the new AI usage policies.', 'id-1'),
+    );
+    await after.a.onText(message('What did it decide?'));
+    expect(after.q.calls[0]?.options.resume).toBe('stored-1');
+    await after.a.onText(message('/new'));
+    expect(deleteSession.mock.calls.map(([id]) => id).sort()).toEqual(['id-1', 'stored-1']);
+  });
+
+  it('a close skips, without a warning, a session no transcript was written for', async () => {
+    const { a } = app(answer("I can't help with that.", 'id-1'), answer('Here it is.', 'id-2'));
+    await a.onText(message('question'));
+    sessionExists = async (id) => id !== 'id-1';
+    await a.onText(message('/new'));
+    expect(deleteSession.mock.calls).toEqual([['id-2']]);
+    expect(log.warn).not.toHaveBeenCalled();
   });
 
   it('an empty answer stores nothing and says so', async () => {

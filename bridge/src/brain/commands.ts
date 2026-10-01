@@ -53,7 +53,7 @@ export function helpText(): string {
   ].join('\n');
 }
 
-export function closedText(s: Subject | undefined): string {
+export function closedText(s: Pick<Subject, 'title' | 'questions'> | undefined): string {
   if (!s) return 'Nothing to close: no open subject here.';
   return `Closed: «${s.title}», ${s.questions} ${s.questions === 1 ? 'question' : 'questions'}.`;
 }
