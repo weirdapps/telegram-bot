@@ -115,7 +115,7 @@ export function promptFor(q: Question, voiceMode: VoiceMode): string {
 
 export class BrainApp {
   private readonly queue: KeyedQueue;
-  private readonly running = new Map<string, AbortController>();
+  private readonly running = new Map<string, { abort: AbortController; draftId: number }>();
   private draftSeq = 0;
 
   constructor(private readonly d: BrainAppDeps) {
@@ -142,27 +142,38 @@ export class BrainApp {
       );
       return;
     }
-    let heard: { text: string; language: SupportedLanguage };
-    try {
-      heard = await this.d.transcribe(m.mediaPath);
-    } catch (err) {
-      await this.d.out.sendPlain(m.chatId, `Voice transcription failed: ${errorText(err)}`, opts);
-      return;
-    }
-    if (heard.text === '') {
-      await this.d.out.sendPlain(
-        m.chatId,
-        "I couldn't make out the voice note. Try again, or type the question.",
-        opts,
-      );
-      return;
-    }
-    await this.ask({
-      chatId: m.chatId,
-      text: heard.text,
-      modality: 'voice',
-      language: heard.language,
-      ...threadOf(m),
+    // Transcribe at once, but take the subject's place in the queue now: messages are
+    // answered in the order they arrived, however long each transcription takes.
+    const heard = this.d.transcribe(m.mediaPath).then(
+      (h) => ({ ok: true as const, h }),
+      (err: unknown) => ({ ok: false as const, err }),
+    );
+    const key = subjectKey(m.chatId, m.threadId);
+    await this.queue.run(key, async () => {
+      const r = await heard;
+      if (!r.ok) {
+        await this.d.out.sendPlain(
+          m.chatId,
+          `Voice transcription failed: ${errorText(r.err)}`,
+          opts,
+        );
+        return;
+      }
+      if (r.h.text === '') {
+        await this.d.out.sendPlain(
+          m.chatId,
+          "I couldn't make out the voice note. Try again, or type the question.",
+          opts,
+        );
+        return;
+      }
+      await this.answer(key, {
+        chatId: m.chatId,
+        text: r.h.text,
+        modality: 'voice',
+        language: r.h.language,
+        ...threadOf(m),
+      });
     });
   }
 
@@ -170,17 +181,19 @@ export class BrainApp {
     const key = cb.data.startsWith(CALLBACK_PREFIX) ? cb.data.slice(CALLBACK_PREFIX.length) : '';
     const [chatId, thread] = key.split(':');
     if (!this.accepts(cb.senderId, cb.chatType) || chatId !== cb.chatId || thread === undefined) {
-      await this.d.out.answerCallback(cb.id);
+      await this.acknowledge(cb.id);
       return;
     }
-    await this.d.out.answerCallback(cb.id, 'Closing the subject');
+    await this.acknowledge(cb.id, 'Closing the subject');
     const topic = Number(thread);
     const threadId = topic === 0 ? undefined : topic;
     await this.guard(cb.chatId, threadId, () => this.close(key, cb.chatId, threadId));
   }
 
   onStop(s: StopEvent): void {
-    this.running.get(subjectKey(s.chatId, s.threadId))?.abort(new TurnCancelled('stopped'));
+    // Only the turn showing that draft: a Stop handled after its turn ended must not stop the next.
+    const turn = this.running.get(subjectKey(s.chatId, s.threadId));
+    if (turn?.draftId === s.draftId) turn.abort.abort(new TurnCancelled('stopped'));
   }
 
   private accepts(senderId: string, chatType: string | undefined): boolean {
@@ -193,6 +206,15 @@ export class BrainApp {
 
   private now(): Date {
     return this.d.now ? this.d.now() : new Date();
+  }
+
+  /** Best effort: a tap too old to acknowledge (after a restart, say) still gets its work done. */
+  private async acknowledge(id: string, text?: string): Promise<void> {
+    try {
+      await this.d.out.answerCallback(id, text);
+    } catch (err) {
+      this.d.log.warn({ err: errorText(err) }, 'button tap not acknowledged');
+    }
   }
 
   /** Work outside a turn: a failure is logged and reported in the same topic, never thrown. */
@@ -218,10 +240,14 @@ export class BrainApp {
     const key = subjectKey(m.chatId, m.threadId);
     switch (command.kind) {
       case 'new': {
-        await this.close(key, m.chatId, m.threadId);
         // "/new <question>" asks that question as the first of the fresh subject.
         const rest = text.replace(/^\/(new|clear)(?:@\w+)?\s*/i, '').trim();
-        if (rest !== '') await this.ask(textQuestion(m, rest));
+        await this.close(
+          key,
+          m.chatId,
+          m.threadId,
+          rest !== '' ? textQuestion(m, rest) : undefined,
+        );
         return;
       }
       case 'context':
@@ -269,9 +295,17 @@ export class BrainApp {
     };
   }
 
-  /** Cancel a running turn of the subject, then close it behind that turn in the queue. */
-  private async close(key: string, chatId: string, threadId: number | undefined): Promise<void> {
-    this.running.get(key)?.abort(new TurnCancelled('closed'));
+  /**
+   * Cancel a running turn of the subject, then close it behind that turn in the queue. `first`
+   * opens the fresh subject in the same queue task, so nothing sent meanwhile goes before it.
+   */
+  private async close(
+    key: string,
+    chatId: string,
+    threadId: number | undefined,
+    first?: Question,
+  ): Promise<void> {
+    this.running.get(key)?.abort.abort(new TurnCancelled('closed'));
     await this.queue.run(key, async () => {
       const subject = await this.d.store.remove(key);
       if (subject) {
@@ -285,6 +319,7 @@ export class BrainApp {
         }
       }
       await this.d.out.sendPlain(chatId, closedText(subject), threadOpts(threadId));
+      if (first) await this.answer(key, first);
     });
   }
 
@@ -296,14 +331,19 @@ export class BrainApp {
   private async answer(key: string, q: Question): Promise<void> {
     const opts = threadOpts(q.threadId);
     const abort = new AbortController();
-    this.running.set(key, abort);
+    const draftId = ++this.draftSeq;
+    this.running.set(key, { abort, draftId });
     const draft = new DraftStream({
       sink: this.d.out,
       chatId: q.chatId,
-      draftId: ++this.draftSeq,
+      draftId,
       ...threadOf(q),
       onError: (err) => this.d.log.warn({ err: errorText(err) }, 'draft update failed'),
     });
+    // One stop per turn: every stop() call waits out its own grace period for a hung send.
+    let stopping: Promise<void> | undefined;
+    const stopDraft = (): Promise<void> => (stopping ??= draft.stop());
+    let turnDone = false;
     draft.start();
     try {
       // Read inside the try: an unreadable subject store still gets the owner a reply.
@@ -318,8 +358,9 @@ export class BrainApp {
             e.kind === 'tool' ? draft.tool(e.name, e.detail) : draft.setText(e.text),
         },
       );
+      turnDone = true;
       // Awaited, so a draft update still in flight cannot land after the answer.
-      await draft.stop();
+      await stopDraft();
       if (outcome.denied.length > 0) {
         this.d.log.warn({ denied: outcome.denied }, 'tool calls denied by the allowlist');
       }
@@ -357,19 +398,20 @@ export class BrainApp {
         voiceMode,
       );
     } catch (err) {
-      await draft.stop();
-      await this.failure(err, q, abort.signal);
+      await stopDraft();
+      // A Stop or close that lands after the turn returned must not hide a later failure.
+      await this.failure(err, q, turnDone ? undefined : abort.signal);
     } finally {
-      // A safety net for the keep-alive timer; not awaited, since a second stop() during a
-      // hung send would wait out another grace period.
-      void draft.stop();
+      // A safety net, so the keep-alive timer never outlives the turn; left unawaited.
+      void stopDraft();
       this.running.delete(key);
     }
   }
 
-  private async failure(err: unknown, q: Question, signal: AbortSignal): Promise<void> {
+  /** `signal` only while the turn had not returned: after that, every error is a real failure. */
+  private async failure(err: unknown, q: Question, signal: AbortSignal | undefined): Promise<void> {
     const opts = threadOpts(q.threadId);
-    const reason: unknown = signal.aborted ? signal.reason : undefined;
+    const reason: unknown = signal?.aborted ? signal.reason : undefined;
     if (reason instanceof TurnCancelled) {
       if (reason.why === 'stopped') await this.d.out.sendPlain(q.chatId, 'Stopped.', opts);
       return;

@@ -6,8 +6,10 @@ import {
   BrainApp,
   NEW_SUBJECT_BUTTON,
   promptFor,
+  type BrainAppDeps,
   type BrainOutput,
 } from '../bridge/src/brain/brainApp.js';
+import { DRAFT_STOP_GRACE_MS } from '../bridge/src/brain/draftStream.js';
 import { SubjectStore } from '../bridge/src/brain/subjects.js';
 import type { BotApiChannel } from '../bridge/src/channels/botApiChannel.js';
 import type { ChannelMessage, SendOptions } from '../bridge/src/channels/channel.js';
@@ -93,12 +95,20 @@ const deferred = () => {
   return { promise, resolve };
 };
 
+type Heard = Awaited<ReturnType<BrainAppDeps['transcribe']>>;
+const heard = (text: string): Heard => ({ text, language: 'en-US' });
+/** The question text at the end of a prompt, after any voice or reply notes. */
+const questionOf = (prompt: string) => prompt.split('\n\n').pop();
+type LogFn = (obj: Record<string, unknown>, msg: string) => void;
+
 describe('BrainApp', () => {
   let dir: string;
   let store: SubjectStore;
   let out: FakeOut;
   let now: Date;
   let deleteSession: Mock<(sessionId: string) => Promise<void>>;
+  let transcribe: BrainAppDeps['transcribe'];
+  let log: Record<'info' | 'warn' | 'error', Mock<LogFn>>;
 
   beforeEach(async () => {
     dir = await fs.mkdtemp(join(tmpdir(), 'brain-app-'));
@@ -106,9 +116,12 @@ describe('BrainApp', () => {
     out = new FakeOut();
     now = new Date('2026-10-01T10:00:00Z');
     deleteSession = vi.fn(async (_id: string) => undefined);
+    transcribe = async () => ({ text: 'spoken question', language: 'el-GR' });
+    log = { info: vi.fn<LogFn>(), warn: vi.fn<LogFn>(), error: vi.fn<LogFn>() };
   });
 
   afterEach(async () => {
+    vi.useRealTimers();
     await fs.rm(dir, { recursive: true, force: true });
   });
 
@@ -127,12 +140,12 @@ describe('BrainApp', () => {
         silenceMs: 2000,
       },
       deleteSession,
-      transcribe: async () => ({ text: 'spoken question', language: 'el-GR' }),
+      transcribe: (path) => transcribe(path),
       synthesize: async () => ({ audio: Buffer.from('ogg'), durationSeconds: 3 }),
       maxAudioSeconds: 60,
       allowed: new Set([OWNER]),
       model: 'test-model',
-      log: { info: () => undefined, warn: () => undefined, error: () => undefined },
+      log,
       now: () => now,
     });
     return { a, q };
@@ -355,13 +368,15 @@ describe('BrainApp', () => {
   });
 
   it('cuts a reply quote and an error reason without splitting an emoji', async () => {
-    // Each cut point falls between the two halves of the emoji.
-    const { a, q } = app(new Error(`${'e'.repeat(299)}😀 and more`));
+    // A cut to `max` keeps max - 1 characters, then the ellipsis. Here the emoji's high half
+    // is the last character kept (index 498 of a 500 cut, 298 of a 300 cut), so a plain slice
+    // would leave it alone without its low half.
+    const { a, q } = app(new Error(`${'e'.repeat(298)}😀 and more`));
     await a.onText(message('what is this?', { replyToText: `${'x'.repeat(498)}😀 and more` }));
     expect(q.calls[0]?.prompt).not.toMatch(LONE_SURROGATE);
     expect(q.calls[0]?.prompt).toContain(`${'x'.repeat(498)}…»]`);
     expect(out.last().text).not.toMatch(LONE_SURROGATE);
-    expect(out.last().text).toBe(`Error: ${'e'.repeat(299)}…`);
+    expect(out.last().text).toBe(`Error: ${'e'.repeat(298)}…`);
   });
 
   it('replies with the error when the subject store cannot be read, and never rejects', async () => {
@@ -383,6 +398,139 @@ describe('BrainApp', () => {
     for (const s of out.sent) expect(s.text).toMatch(/^Error: \S/);
     expect(q.calls).toHaveLength(0);
     expect(deleteSession).not.toHaveBeenCalled();
+  });
+
+  it('answers voice notes in arrival order, even when the first transcribes slower', async () => {
+    let releaseFirst!: () => void;
+    const slow = new Promise<Heard>((r) => {
+      releaseFirst = () => r(heard('first note'));
+    });
+    transcribe = async (path) => (path === '/tmp/1.ogg' ? slow : heard('second note'));
+    const { a, q } = app(answer('one', 'id-1'), answer('two', 'id-1'));
+    const first = a.onVoice(message('', { mediaPath: '/tmp/1.ogg' }));
+    const second = a.onVoice(message('', { mediaPath: '/tmp/2.ogg' }));
+    await tick(); // the second note is transcribed, the first is not
+    releaseFirst();
+    await Promise.all([first, second]);
+    expect(q.calls.map((c) => questionOf(c.prompt))).toEqual(['first note', 'second note']);
+    expect(await store.get('500:0')).toMatchObject({ title: 'first note', questions: 2 });
+  });
+
+  it('answers a text sent during a transcription after the voice note', async () => {
+    let release!: () => void;
+    transcribe = () =>
+      new Promise<Heard>((r) => {
+        release = () => r(heard('spoken first'));
+      });
+    const { a, q } = app(answer('one', 'id-1'), answer('two', 'id-1'));
+    const voice = a.onVoice(message('', { mediaPath: '/tmp/note.ogg' }));
+    const text = a.onText(message('typed second'));
+    release();
+    await Promise.all([voice, text]);
+    expect(q.calls.map((c) => questionOf(c.prompt))).toEqual(['spoken first', 'typed second']);
+  });
+
+  it('"/new X" then "Y" at once: X opens the fresh subject and Y follows it', async () => {
+    const { a, q } = app(
+      answer('old', 'id-1'),
+      answer('x answer', 'id-2'),
+      answer('y answer', 'id-2'),
+    );
+    await a.onText(message('Old question'));
+    await Promise.all([a.onText(message('/new What about X?')), a.onText(message('And Y?'))]);
+    expect(q.calls.map((c) => c.prompt)).toEqual(['Old question', 'What about X?', 'And Y?']);
+    expect(out.sent.map((s) => s.text)).toEqual([
+      'old',
+      'Closed: «Old question», 1 question.',
+      'x answer',
+      'y answer',
+    ]);
+    expect(await store.get('500:0')).toMatchObject({ title: 'What about X?', questions: 2 });
+  });
+
+  it('Stop stops only the draft it was tapped under', async () => {
+    const second = deferred();
+    const third = deferred();
+    const { a } = app(
+      answer('first', 'id-1'),
+      { gate: second.promise, messages: answer('second', 'id-1') },
+      { gate: third.promise, messages: answer('third', 'id-1') },
+    );
+    // Each turn shows its own draft: ids 1, 2 and 3 here.
+    await a.onText(message('first question'));
+    const p2 = a.onText(message('second question'));
+    await tick();
+    a.onStop({ chatId: '500', draftId: 1 }); // tapped as the first answer landed, handled late
+    second.resolve();
+    await p2;
+    expect(out.last().text).toBe('second');
+    const p3 = a.onText(message('third question'));
+    await tick();
+    a.onStop({ chatId: '500', draftId: 3 });
+    await p3;
+    expect(out.last().text).toBe('Stopped.');
+    expect((await store.get('500:0'))?.questions).toBe(2);
+  });
+
+  it('a Stop after the turn returned does not hide a delivery failure', async () => {
+    const { a } = app(answer('Alice owns it.', 'id-1'));
+    out.sendRich = async () => {
+      a.onStop({ chatId: '500', draftId: 1 }); // the owner taps Stop as the answer goes out
+      throw new Error('Telegram is down');
+    };
+    await a.onText(message('Who owns the budget?'));
+    expect(out.last().text).toBe('Error: Telegram is down');
+    expect(log.error).toHaveBeenCalledWith({ err: 'Telegram is down' }, expect.any(String));
+    expect((await store.get('500:0'))?.questions).toBe(1);
+  });
+
+  it('a failed button acknowledgement still closes the subject', async () => {
+    const { a } = app(answer('A', 'id-1'));
+    await a.onText(message('question'));
+    out.answerCallback = async () => {
+      throw new Error('Bad Request: query is too old');
+    };
+    await a.onCallback({
+      id: 'cb1',
+      data: 'new:500:0',
+      senderId: OWNER,
+      chatId: '500',
+      chatType: 'private',
+    });
+    expect(await store.get('500:0')).toBeUndefined();
+    expect(out.last().text).toBe('Closed: «question», 1 question.');
+    expect(log.warn).toHaveBeenCalledWith(
+      { err: 'Bad Request: query is too old' },
+      expect.any(String),
+    );
+  });
+
+  it('a hung draft followed by a failure waits out one grace period, not two', async () => {
+    vi.useFakeTimers();
+    out.sendDraft = () => new Promise<void>(() => undefined); // a draft send that never settles
+    // The store in memory: advancing fake time does not wait for file I/O.
+    vi.spyOn(store, 'get').mockResolvedValue(undefined);
+    vi.spyOn(store, 'voiceMode').mockResolvedValue('mirror');
+    vi.spyOn(store, 'put').mockRejectedValue(new Error('disk full'));
+    const { a } = app(answer('Alice owns it.', 'id-1'));
+    const p = a.onText(message('Who owns the budget?'));
+    await vi.advanceTimersByTimeAsync(DRAFT_STOP_GRACE_MS - 1);
+    expect(out.sent).toHaveLength(0);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(out.last().text).toBe('Error: disk full');
+    await p;
+  });
+
+  it('a reply that cannot be sent rejects to the caller and leaves no timer running', async () => {
+    vi.useFakeTimers();
+    const down = async (): Promise<number> => {
+      throw new Error('Telegram is down');
+    };
+    out.sendRich = down; // the answer, in deliver()
+    out.sendPlain = down; // then the error reply, in failure()
+    const { a } = app(answer('Alice owns it.', 'id-1'));
+    await expect(a.onText(message('Who owns the budget?'))).rejects.toThrow('Telegram is down');
+    expect(vi.getTimerCount()).toBe(0);
   });
 });
 
