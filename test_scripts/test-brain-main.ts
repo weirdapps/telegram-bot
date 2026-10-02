@@ -92,32 +92,33 @@ describe('brainShutdown', () => {
     return { shutdown, order, log, cancelAll, stop, closeClients, exit };
   }
 
-  it('cancels the running turns, then stops the channel, closes the clients and exits 0', async () => {
+  it('stops polling, then cancels the running turns, closes the clients and exits 0', async () => {
     const h = harness();
     await h.shutdown();
-    expect(h.order).toEqual(['cancel turns', 'stop channel', 'close clients', 'exit']);
+    expect(h.order).toEqual(['stop channel', 'cancel turns', 'close clients', 'exit']);
     expect(h.exit).toHaveBeenCalledWith(0);
     expect(h.log.warn).not.toHaveBeenCalled();
   });
 
-  it('waits at most 3 s for the restart replies before it stops the channel', async () => {
+  it('waits at most 3 s for the restart replies, then exits', async () => {
     vi.useFakeTimers();
     const h = harness({ cancelAll: () => new Promise<void>(() => undefined) });
     const done = h.shutdown();
     await vi.advanceTimersByTimeAsync(RESTART_REPLY_WAIT_MS - 1);
-    expect(h.stop).not.toHaveBeenCalled();
+    expect(h.exit).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(1);
     await done;
     expect(h.order).toEqual(['stop channel', 'close clients', 'exit']);
     expect(h.log.warn).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
   });
 
-  it('exits 0, with a warning, when the channel stop hangs past 5 s', async () => {
+  it('still sends the restart replies and exits 0 when the channel stop hangs past 5 s', async () => {
     vi.useFakeTimers();
     const h = harness({ stop: () => new Promise<void>(() => undefined) });
     const done = h.shutdown();
     await vi.advanceTimersByTimeAsync(CHANNEL_STOP_WAIT_MS - 1);
-    expect(h.exit).not.toHaveBeenCalled();
+    expect(h.cancelAll).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(1);
     await done;
     expect(h.order).toEqual(['cancel turns', 'close clients', 'exit']);
@@ -126,15 +127,15 @@ describe('brainShutdown', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it('exits 0 when the channel stop fails', async () => {
+  it('still sends the restart replies and exits 0 when the channel stop fails', async () => {
     const h = harness({
       stop: async () => {
         throw new Error('network down');
       },
     });
     await h.shutdown();
+    expect(h.order).toEqual(['cancel turns', 'close clients', 'exit']);
     expect(h.exit).toHaveBeenCalledWith(0);
-    expect(h.closeClients).toHaveBeenCalledTimes(1);
     expect(h.log.warn).toHaveBeenCalledWith({ err: 'network down' }, 'channel stop failed');
   });
 

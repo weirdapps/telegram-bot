@@ -42,8 +42,8 @@ async function settlesWithin(p: Promise<unknown>, ms: number): Promise<boolean> 
 }
 
 /**
- * The SIGINT and SIGTERM handler: running turns tell the owner the bot is restarting, the
- * channel stops, and the process exits 0, all within about 8 s, well inside systemd's 90 s
+ * The SIGINT and SIGTERM handler: polling stops, running turns tell the owner the bot is
+ * restarting, and the process exits 0, all within about 8 s, well inside systemd's 90 s
  * before SIGKILL. A second signal joins the shutdown already under way.
  */
 export function brainShutdown(o: {
@@ -57,17 +57,24 @@ export function brainShutdown(o: {
   const run = async (): Promise<void> => {
     o.log.info({}, 'shutdown signal received');
     try {
-      // First, while the channel can still send them: "Restarting; please ask again."
+      // Polling stops first, so nothing new is fetched and confirmed while turns wind down:
+      // Telegram redelivers what arrives meanwhile after the restart. bot.stop() confirms
+      // the last update with one more getUpdates, which fails or hangs with the network
+      // down; a stop must still exit 0, or the unit ends failed and alerts.
+      try {
+        if (!(await settlesWithin(o.channel.stop(), CHANNEL_STOP_WAIT_MS))) {
+          o.log.warn({}, 'channel stop timed out; going on');
+        }
+      } catch (err) {
+        o.log.warn(
+          { err: err instanceof Error ? err.message : String(err) },
+          'channel stop failed',
+        );
+      }
+      // Sending still works once polling has stopped: "Restarting; please ask again."
       if (!(await settlesWithin(o.app.cancelAll(), RESTART_REPLY_WAIT_MS))) {
-        o.log.warn({}, 'restart replies still pending; stopping the channel anyway');
+        o.log.warn({}, 'restart replies still pending; exiting anyway');
       }
-      // bot.stop() confirms the last update with one more getUpdates, which fails or hangs
-      // with the network down; a stop must still exit 0, or the unit ends failed and alerts.
-      if (!(await settlesWithin(o.channel.stop(), CHANNEL_STOP_WAIT_MS))) {
-        o.log.warn({}, 'channel stop timed out; exiting anyway');
-      }
-    } catch (err) {
-      o.log.warn({ err: err instanceof Error ? err.message : String(err) }, 'channel stop failed');
     } finally {
       o.closeClients();
       o.exit(0);
