@@ -79,6 +79,20 @@ describe('runBrainTurn', () => {
     expect(q.calls).toHaveLength(1);
   });
 
+  it('reads nothing after finding the brain offline', async () => {
+    const q = scriptedQuery([
+      init('failed'),
+      toolUse('mcp__second-brain__recall', { query: 'budget' }),
+      delta('a guess'),
+      success('a guess', 'x'),
+    ]);
+    const deps = turnDeps(q.fn);
+    await expect(
+      runBrainTurn({ prompt: 'q', subject: undefined, abort: live() }, deps),
+    ).rejects.toBeInstanceOf(BrainOfflineError);
+    expect(deps.events).toEqual([]);
+  });
+
   it('retries once in a fresh, rebuilt session when the SDK goes silent', async () => {
     const q = scriptedQuery('hang', answer('late answer', 'id-1'));
     const deps = turnDeps(q.fn);
