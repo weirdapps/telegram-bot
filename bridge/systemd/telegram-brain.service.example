@@ -3,7 +3,8 @@
 # The brain profile of the bridge: a second bot with read-only tools and
 # per-subject context. Copy it, replace <vertex-env-file> with the file your
 # general bridge unit sources and <node-bin-dir> with the directory holding node
-# and npm (the same PATH your general bridge unit exports), then:
+# and npm (the same PATH your general bridge unit exports; an absolute path, since
+# ~ does not expand inside the quotes), then:
 #   systemctl --user daemon-reload && systemctl --user enable --now telegram-brain.service
 [Unit]
 Description=Telegram brain bot (bridge, brain profile)
