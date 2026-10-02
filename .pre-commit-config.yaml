@@ -58,3 +58,5 @@ repos:
     hooks:
       - id: markdownlint
         args: [--config, .markdownlint.yaml]
+        # Model prompts, not docs: the file is sent as written, so no lint-only heading.
+        exclude: ^bridge/src/brain/prompts/

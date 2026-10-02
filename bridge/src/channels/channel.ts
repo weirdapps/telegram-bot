@@ -22,6 +22,35 @@ export interface ChannelMessage {
   text?: string;
   /** Local filesystem path to the downloaded voice file (.ogg). */
   mediaPath?: string;
+  /** Forum topic, in a private chat with topics on; undefined in a plain chat. */
+  threadId?: number;
+  /** Text (or caption) of the message this one replies to, when it is a reply. */
+  replyToText?: string;
+  /** Telegram chat type ('private', 'group', ...), when the channel reports it. */
+  chatType?: string;
+}
+
+/** Where and how a brain reply is sent. */
+export interface SendOptions {
+  threadId?: number;
+  /** One inline button under the message: label and callback data. */
+  button?: { text: string; data: string };
+}
+
+/** A tap on an inline button. */
+export interface CallbackEvent {
+  id: string;
+  data: string;
+  senderId: string;
+  chatId: string;
+  chatType?: string;
+}
+
+/** The owner pressed Stop under a draft. */
+export interface StopEvent {
+  chatId: string;
+  threadId?: number;
+  draftId: number;
 }
 
 export type ChannelTextHandler = (msg: ChannelMessage) => void;

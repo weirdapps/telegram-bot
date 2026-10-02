@@ -46,6 +46,17 @@ export function isLikelyPolicyRefusal(result: SDKResultMessage): boolean {
   return REFUSAL_MARKERS.some((m) => text.includes(m));
 }
 
+/** The refusal-retry model and its region, from the same env vars and defaults the general bridge uses. */
+export function fallbackTier(env: NodeJS.ProcessEnv = process.env): {
+  model: string;
+  region: string;
+} {
+  return {
+    model: env.VERTEX_MODEL_FALLBACK ?? 'claude-opus-4-6[1m]',
+    region: env.VERTEX_REGION_FALLBACK ?? 'europe-west1',
+  };
+}
+
 /**
  * Run `attempt(model)` once with the default model (`null` → ANTHROPIC_MODEL). If the
  * result looks like a policy refusal, retry ONCE on the fallback model and return that
@@ -62,12 +73,11 @@ export async function withFallbackOnRefusal(
   const first = await attempt(null);
   if (!isLikelyPolicyRefusal(first)) return first;
 
-  const fallbackModel =
-    opts?.fallbackModel ?? process.env.VERTEX_MODEL_FALLBACK ?? 'claude-opus-4-6[1m]';
+  const tier = fallbackTier();
+  const fallbackModel = opts?.fallbackModel ?? tier.model;
   // The region default moves with the model: 4.6 is a <=4.6 model and belongs in
   // europe-west1, so an 'eu' default would 429 every retry.
-  const fallbackRegion =
-    opts?.fallbackRegion ?? process.env.VERTEX_REGION_FALLBACK ?? 'europe-west1';
+  const fallbackRegion = opts?.fallbackRegion ?? tier.region;
   if (opts?.onFallback) await opts.onFallback(first);
 
   // Region is a function of model version (>=4.7 -> eu, <=4.6 -> europe-west1) and must

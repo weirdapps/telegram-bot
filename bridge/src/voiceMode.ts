@@ -31,8 +31,8 @@ const USAGE_TEXT =
 export async function handleVoiceCommand(
   rawText: string,
   chatId: string,
-  state: StateStore,
-  channel: Channel,
+  state: Pick<StateStore, 'load' | 'save'>,
+  channel: Pick<Channel, 'sendText'>,
 ): Promise<boolean> {
   const trimmed = rawText.trim();
   if (!trimmed.startsWith('/voice')) return false;
