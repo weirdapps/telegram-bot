@@ -167,8 +167,9 @@ export async function startBrain(o: {
     channel,
     log,
     closeClients: () => {
-      stt.close();
-      tts.close();
+      // The process exits right after, so a close that never settles costs nothing.
+      void stt.close();
+      void tts.close();
     },
     exit: (code) => process.exit(code),
   });

@@ -17,8 +17,10 @@ export interface TelegramChunk {
   plain: string;
 }
 
-const INLINE_TOKENS = /(`[^`\n]+`|\[[^\]\n]+\]\(https?:\/\/[^\s)]+\))/g;
-const LINK = /^\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)$/;
+// Bounded lengths keep the scan linear: an unclosed "[" or "`" stops looking after a
+// few hundred characters instead of at the end of a long line.
+const INLINE_TOKENS = /(`[^`\n]{1,1000}`|\[[^\]\n]{1,500}\]\(https?:\/\/[^\s)]{1,2000}\))/g;
+const LINK = /^\[([^\]\n]{1,500})\]\((https?:\/\/[^\s)]{1,2000})\)$/;
 
 export function escapeHtml(s: string): string {
   return s
@@ -67,12 +69,12 @@ export function markdownToTelegramHtml(md: string): string {
       code.push(line);
       continue;
     }
-    const heading = /^#{1,6}\s+(.*)$/.exec(line);
+    const heading = /^#{1,6}\s+(\S.*)?$/.exec(line);
     if (heading) {
       out.push(`<b>${inline((heading[1] ?? '').replace(/\*\*/g, ''))}</b>`);
       continue;
     }
-    const bullet = /^(\s*)[-*]\s+(.*)$/.exec(line);
+    const bullet = /^(\s*)[-*]\s+(\S.*)?$/.exec(line);
     if (bullet) {
       out.push(`${bullet[1] ?? ''}• ${inline(bullet[2] ?? '')}`);
       continue;
