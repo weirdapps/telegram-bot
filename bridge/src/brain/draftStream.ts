@@ -138,8 +138,9 @@ export class DraftStream {
 
 // The last TEXT_TAIL code units of `text`. A cut through an emoji would start on the low half
 // of its surrogate pair, which is invalid UTF-16 and can make Telegram reject the draft.
+// codePointAt reads a low half as itself, and a whole pair above 0xFFFF, which is kept.
 function tailOf(text: string): string {
   const tail = text.slice(-TEXT_TAIL);
-  const first = tail.charCodeAt(0);
+  const first = tail.codePointAt(0) ?? 0;
   return first >= 0xdc00 && first <= 0xdfff ? tail.slice(1) : tail;
 }

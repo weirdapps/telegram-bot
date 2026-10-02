@@ -127,6 +127,21 @@ describe('DraftStream', () => {
     expect(text.startsWith('…b')).toBe(true);
   });
 
+  it('keeps an emoji whose whole pair begins the tail', () => {
+    const { sink } = recorder();
+    const d = new DraftStream({ sink, chatId: '1', draftId: 1 });
+    // The last 3,500 code units of this text begin on the high half of the emoji's pair.
+    d.setText(`${'a'.repeat(10)}😀${'b'.repeat(3498)}`);
+    expect(d.render().startsWith('…😀b')).toBe(true);
+  });
+
+  it('keeps the first code unit of a tail that begins on an ordinary character', () => {
+    const { sink } = recorder();
+    const d = new DraftStream({ sink, chatId: '1', draftId: 1 });
+    d.setText(`${'a'.repeat(10)}c${'b'.repeat(3499)}`);
+    expect(d.render().startsWith('…cb')).toBe(true);
+  });
+
   it('stop() resolves only once every update in flight settles, and starts no other', async () => {
     const texts: string[] = [];
     const settles: Array<() => void> = [];
