@@ -13,12 +13,12 @@ const profile = loadBrainProfile();
 // As startBrain does: the SDK spawns the CLI in this directory without checking it exists.
 mkdirSync(profile.cwd, { recursive: true, mode: 0o700 });
 let started = 0;
-let firstDraftMs = 0;
+let firstDraftMs: number | undefined;
 const seconds = (): string => ((Date.now() - started) / 1000).toFixed(1);
 
 const out: BrainOutput = {
   sendDraft: async () => {
-    if (firstDraftMs === 0) firstDraftMs = Date.now() - started;
+    firstDraftMs ??= Date.now() - started;
   },
   sendRich: async (_chatId, _html, plain) => {
     console.log(`\n--- answer after ${seconds()} s (first draft at ${firstDraftMs} ms)\n${plain}`);
@@ -59,7 +59,7 @@ const app = new BrainApp({
 async function say(text: string): Promise<void> {
   console.log(`\n>>> ${text}`);
   started = Date.now();
-  firstDraftMs = 0;
+  firstDraftMs = undefined;
   await app.onText({ channel: 'smoke', chatId: '1', senderId: '1', chatType: 'private', text });
 }
 
