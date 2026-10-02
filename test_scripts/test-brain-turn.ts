@@ -264,6 +264,16 @@ describe('runBrainTurn', () => {
     ).rejects.toThrow('error_during_execution: boom');
   });
 
+  it.each([
+    [[], /^Claude: error_during_execution$/],
+    [['boom', 'bust'], /^Claude: error_during_execution: boom; bust$/],
+  ])('names the error subtype, then its errors when there are any: %j', async (errors, message) => {
+    const q = scriptedQuery([init(), failure('error_during_execution', errors)]);
+    await expect(
+      runBrainTurn({ prompt: 'q', subject: undefined, abort: live() }, turnDeps(q.fn)),
+    ).rejects.toThrow(message);
+  });
+
   it('throws on an API error the SDK reports as a success result', async () => {
     const q = scriptedQuery([init(), success('API Error: 529 Overloaded', 'id-1', [], true)]);
     await expect(

@@ -281,6 +281,14 @@ describe('BrainApp', () => {
     expect(out.callbacks.map((c) => c.id)).toEqual(['cb1', 'cb2']);
   });
 
+  it('acknowledges a tap whose data it does not know, and closes nothing', async () => {
+    const { a } = app(answer('A', 'id-1'));
+    await a.onText(message('question'));
+    await a.onCallback(tapOn('new:500', 'cb1'));
+    expect(await store.get('500:0')).toBeDefined();
+    expect(out.callbacks).toEqual([{ id: 'cb1', text: undefined }]);
+  });
+
   it('an old 🆕 button closes nothing once its subject is closed; the current one still closes', async () => {
     const { a } = app(answer('Answer A', 'id-1'), answer('Answer B', 'id-2'));
     await a.onText(message('Question A'));

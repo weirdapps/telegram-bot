@@ -232,7 +232,8 @@ function outcome(run: AttemptRun, a: Attempt): TurnOutcome {
   if (r.subtype === 'success' && r.is_error) throw new Error(`Claude: ${r.result}`);
   if (r.subtype === 'success') return { ...base, text: r.result, hitMaxTurns: false };
   if (r.subtype === 'error_max_turns') return { ...base, text: run.text, hitMaxTurns: true };
-  throw new Error(`Claude: ${r.subtype}${r.errors.length > 0 ? `: ${r.errors.join('; ')}` : ''}`);
+  const errors = r.errors.length > 0 ? `: ${r.errors.join('; ')}` : '';
+  throw new Error(`Claude: ${r.subtype}${errors}`);
 }
 
 export async function runBrainTurn(input: TurnInput, deps: TurnDeps): Promise<TurnOutcome> {

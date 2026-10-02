@@ -10,6 +10,10 @@ describe('escapeHtml', () => {
   it('escapes the four characters Telegram HTML cares about', () => {
     expect(escapeHtml('a < b > c & "d"')).toBe('a &lt; b &gt; c &amp; &quot;d&quot;');
   });
+
+  it('escapes every occurrence, and never an entity it wrote', () => {
+    expect(escapeHtml('<<&&>>""')).toBe('&lt;&lt;&amp;&amp;&gt;&gt;&quot;&quot;');
+  });
 });
 
 describe('markdownToTelegramHtml', () => {

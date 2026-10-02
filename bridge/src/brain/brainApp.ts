@@ -271,7 +271,7 @@ export class BrainApp {
 
   async onCallback(cb: CallbackEvent): Promise<void> {
     const tap = parseNewButton(cb.data);
-    if (!this.accepts(cb.senderId, cb.chatType) || tap === null || tap.chatId !== cb.chatId) {
+    if (!this.accepts(cb.senderId, cb.chatType) || tap?.chatId !== cb.chatId) {
       await this.acknowledge(cb.id);
       return;
     }
