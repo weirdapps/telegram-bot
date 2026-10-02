@@ -145,6 +145,25 @@ describe('runBrainTurn', () => {
     expect(out.rebuilt).toBe(true);
   });
 
+  it('rebuilds when the SDK throws, rather than reports, that the stored session is missing', async () => {
+    const q = scriptedQuery(
+      new Error('No conversation found with session ID: stored'),
+      answer('ok', 'id-1'),
+    );
+    const deps = turnDeps(q.fn);
+    const out = await runBrainTurn({ prompt: 'q', subject, abort: live() }, deps);
+    expect(q.calls[0]?.options.resume).toBe('stored');
+    expect(q.calls[1]?.options.sessionId).toBe('id-1');
+    expect(q.calls[1]?.prompt).toContain('Who is the budget owner?');
+    expect(out).toMatchObject({
+      text: 'ok',
+      sessionId: 'id-1',
+      rebuilt: true,
+      usedFallback: false,
+    });
+    expect(deps.warnings).toEqual(['first attempt failed; retrying once in a fresh session']);
+  });
+
   it.each([
     "I can't help with that: it violates Anthropic's usage policies.",
     'That request falls under the Anthropic usage policy, so I will not answer it.',
@@ -269,6 +288,25 @@ describe('runBrainTurn', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('reports an owner stop that lands after the result, before the stream ends, as the stop', async () => {
+    const q = scriptedQuery('hang');
+    const stop = new AbortController();
+    // Unlike silence after the result (above), a stop after it drops the answer.
+    const lingering: QueryFn = (args) =>
+      (async function* () {
+        yield* answer('done', 'id-1');
+        stop.abort(new TurnCancelled('stopped'));
+        yield* q.fn(args);
+      })();
+    await expect(
+      runBrainTurn(
+        { prompt: 'q', subject: undefined, abort: stop.signal },
+        turnDeps(lingering, { silenceMs: 10_000 }),
+      ),
+    ).rejects.toBeInstanceOf(TurnCancelled);
+    expect(q.calls).toHaveLength(1);
   });
 
   it('throws on any other error result', async () => {
