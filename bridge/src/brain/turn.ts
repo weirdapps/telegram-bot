@@ -10,7 +10,9 @@
 import { randomUUID } from 'node:crypto';
 import type {
   Options,
+  SDKAssistantMessage,
   SDKMessage,
+  SDKPartialAssistantMessage,
   SDKResultMessage,
   SDKSystemMessage,
 } from '@anthropic-ai/claude-agent-sdk';
@@ -93,6 +95,15 @@ interface AttemptRun {
   contextTokens: number;
 }
 
+/** What one attempt has read from the SDK so far. */
+interface Reading {
+  text: string;
+  // Every message's text this attempt, for a step-limit stop; drafts show one message at a time.
+  texts: string[];
+  contextTokens: number;
+  result: SDKResultMessage | null;
+}
+
 export function shortToolName(name: string): string {
   if (name.startsWith('mcp__')) return name.split('__').slice(2).join('__');
   return name === 'web_search' || name === 'WebSearch' ? 'web search' : name;
@@ -136,6 +147,83 @@ function reasonOf(signal: AbortSignal): Error {
   return reason instanceof Error ? reason : new Error(String(reason));
 }
 
+/** False when the brain is not connected: the attempt is then aborted and reads no further. */
+function checkInit(m: SDKSystemMessage, deps: TurnDeps, abort: AbortController): boolean {
+  const brain = m.mcp_servers.find((s) => s.name === BRAIN_SERVER);
+  if (brain?.status !== 'connected') {
+    abort.abort(new BrainOfflineError(brain?.status ?? 'missing'));
+    return false;
+  }
+  const unknown = m.tools.filter(
+    (t) => t.startsWith(`mcp__${BRAIN_SERVER}__`) && !BRAIN_ALLOWED_TOOLS.includes(t),
+  );
+  if (unknown.length > 0) {
+    deps.warn('second-brain offers tools outside the allowlist; they stay denied', {
+      tools: unknown,
+    });
+  }
+  return true;
+}
+
+function readStreamEvent(
+  ev: SDKPartialAssistantMessage['event'],
+  reading: Reading,
+  deps: TurnDeps,
+): void {
+  if (ev.type === 'message_start') {
+    if (reading.text !== '') reading.texts.push(reading.text);
+    reading.text = '';
+    const u = ev.message.usage;
+    reading.contextTokens =
+      (u.input_tokens ?? 0) +
+      (u.cache_read_input_tokens ?? 0) +
+      (u.cache_creation_input_tokens ?? 0);
+  } else if (ev.type === 'content_block_delta' && ev.delta.type === 'text_delta') {
+    reading.text += ev.delta.text;
+    deps.onEvent({ kind: 'text', text: reading.text });
+  }
+}
+
+function reportToolCalls(m: SDKAssistantMessage, deps: TurnDeps): void {
+  for (const block of m.message.content) {
+    if (block.type === 'tool_use' || block.type === 'server_tool_use') {
+      deps.onEvent({
+        kind: 'tool',
+        name: shortToolName(block.name),
+        detail: mainArgument(block.input),
+      });
+    }
+  }
+}
+
+/** Reads one SDK message into `reading`; false when the attempt must stop reading. */
+function readMessage(
+  m: SDKMessage,
+  reading: Reading,
+  deps: TurnDeps,
+  abort: AbortController,
+): boolean {
+  if (isInit(m)) return checkInit(m, deps, abort);
+  if (m.type === 'stream_event') readStreamEvent(m.event, reading, deps);
+  else if (m.type === 'assistant') reportToolCalls(m, deps);
+  else if (m.type === 'result') reading.result = m;
+  return true;
+}
+
+/** The attempt's run once the SDK stream has ended; throws the abort reason if it was aborted. */
+function finish(reading: Reading, signal: AbortSignal): AttemptRun {
+  // Silence after the result loses nothing: the answer is already in.
+  const quietAfterResult = reading.result !== null && signal.reason instanceof SilenceError;
+  if (signal.aborted && !quietAfterResult) throw reasonOf(signal);
+  if (reading.result === null) throw new Error('the Claude SDK ended without a result');
+  if (reading.text !== '') reading.texts.push(reading.text);
+  return {
+    result: reading.result,
+    text: reading.texts.join('\n\n'),
+    contextTokens: reading.contextTokens,
+  };
+}
+
 async function runAttempt(a: Attempt, deps: TurnDeps, outer: AbortSignal): Promise<AttemptRun> {
   const abort = new AbortController();
   const onOuter = (): void => abort.abort(outer.reason);
@@ -149,11 +237,7 @@ async function runAttempt(a: Attempt, deps: TurnDeps, outer: AbortSignal): Promi
     timer = setTimeout(() => abort.abort(new SilenceError(silenceMs)), silenceMs);
   };
 
-  let text = '';
-  // Every message's text this attempt, for a step-limit stop; drafts show one message at a time.
-  const texts: string[] = [];
-  let contextTokens = 0;
-  let result: SDKResultMessage | null = null;
+  const reading: Reading = { text: '', texts: [], contextTokens: 0, result: null };
   arm();
   try {
     for await (const m of deps.query({
@@ -161,61 +245,16 @@ async function runAttempt(a: Attempt, deps: TurnDeps, outer: AbortSignal): Promi
       options: deps.buildOptions(a.plan, abort),
     })) {
       arm();
-      if (isInit(m)) {
-        const brain = m.mcp_servers.find((s) => s.name === BRAIN_SERVER);
-        if (brain?.status !== 'connected') {
-          abort.abort(new BrainOfflineError(brain?.status ?? 'missing'));
-          break;
-        }
-        const unknown = m.tools.filter(
-          (t) => t.startsWith(`mcp__${BRAIN_SERVER}__`) && !BRAIN_ALLOWED_TOOLS.includes(t),
-        );
-        if (unknown.length > 0) {
-          deps.warn('second-brain offers tools outside the allowlist; they stay denied', {
-            tools: unknown,
-          });
-        }
-      } else if (m.type === 'stream_event') {
-        const ev = m.event;
-        if (ev.type === 'message_start') {
-          if (text !== '') texts.push(text);
-          text = '';
-          const u = ev.message.usage;
-          contextTokens =
-            (u.input_tokens ?? 0) +
-            (u.cache_read_input_tokens ?? 0) +
-            (u.cache_creation_input_tokens ?? 0);
-        } else if (ev.type === 'content_block_delta' && ev.delta.type === 'text_delta') {
-          text += ev.delta.text;
-          deps.onEvent({ kind: 'text', text });
-        }
-      } else if (m.type === 'assistant') {
-        for (const block of m.message.content) {
-          if (block.type === 'tool_use' || block.type === 'server_tool_use') {
-            deps.onEvent({
-              kind: 'tool',
-              name: shortToolName(block.name),
-              detail: mainArgument(block.input),
-            });
-          }
-        }
-      } else if (m.type === 'result') {
-        result = m;
-      }
+      if (!readMessage(m, reading, deps, abort)) break;
     }
   } catch (err) {
-    // After our own abort the SDK's error is only its echo; the abort reason decides below.
+    // After our own abort the SDK's error is only its echo; the abort reason decides in finish().
     if (!abort.signal.aborted) throw err;
   } finally {
     if (timer) clearTimeout(timer);
     outer.removeEventListener('abort', onOuter);
   }
-  // Silence after the result loses nothing: the answer is already in.
-  const quietAfterResult = result !== null && abort.signal.reason instanceof SilenceError;
-  if (abort.signal.aborted && !quietAfterResult) throw reasonOf(abort.signal);
-  if (result === null) throw new Error('the Claude SDK ended without a result');
-  if (text !== '') texts.push(text);
-  return { result, text: texts.join('\n\n'), contextTokens };
+  return finish(reading, abort.signal);
 }
 
 function outcome(run: AttemptRun, a: Attempt): TurnOutcome {
@@ -234,6 +273,31 @@ function outcome(run: AttemptRun, a: Attempt): TurnOutcome {
   if (r.subtype === 'error_max_turns') return { ...base, text: run.text, hitMaxTurns: true };
   const errors = r.errors.length > 0 ? `: ${r.errors.join('; ')}` : '';
   throw new Error(`Claude: ${r.subtype}${errors}`);
+}
+
+/**
+ * The one retry a first attempt that threw gets: a fresh session after silence, or after the
+ * stored session turned out to be gone. Anything else is thrown again.
+ */
+function retryAfterError(
+  err: unknown,
+  first: Attempt,
+  abort: AbortSignal,
+  deps: TurnDeps,
+  fresh: (fallback: boolean) => Attempt,
+): Attempt {
+  // The owner's stop wins, even when the watchdog's abort got there first.
+  if (abort.aborted) throw reasonOf(abort);
+  if (err instanceof BrainOfflineError) throw err;
+  const message = err instanceof Error ? err.message : String(err);
+  if (
+    err instanceof SilenceError ||
+    (first.plan.resume !== undefined && isMissingSession(message))
+  ) {
+    deps.warn('first attempt failed; retrying once in a fresh session', { err: message });
+    return fresh(false);
+  }
+  throw err;
 }
 
 export async function runBrainTurn(input: TurnInput, deps: TurnDeps): Promise<TurnOutcome> {
@@ -278,19 +342,7 @@ export async function runBrainTurn(input: TurnInput, deps: TurnDeps): Promise<Tu
       return outcome(run, first);
     }
   } catch (err) {
-    // The owner's stop wins, even when the watchdog's abort got there first.
-    if (input.abort.aborted) throw reasonOf(input.abort);
-    if (err instanceof BrainOfflineError) throw err;
-    const message = err instanceof Error ? err.message : String(err);
-    if (
-      err instanceof SilenceError ||
-      (first.plan.resume !== undefined && isMissingSession(message))
-    ) {
-      deps.warn('first attempt failed; retrying once in a fresh session', { err: message });
-      second = fresh(false);
-    } else {
-      throw err;
-    }
+    second = retryAfterError(err, first, input.abort, deps, fresh);
   }
   return outcome(await runAttempt(second, deps, input.abort), second);
 }
