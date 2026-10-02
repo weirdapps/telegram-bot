@@ -24,10 +24,10 @@ const LINK = /^\[([^\]\n]{1,500})\]\((https?:\/\/[^\s)]{1,2000})\)$/;
 
 export function escapeHtml(s: string): string {
   return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;');
 }
 
 function inline(line: string): string {

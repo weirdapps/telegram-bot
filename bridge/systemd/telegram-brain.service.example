@@ -2,7 +2,9 @@
 #
 # The brain profile of the bridge: a second bot with read-only tools and
 # per-subject context. Copy it, replace <vertex-env-file> with the file your
-# general bridge unit sources, then:
+# general bridge unit sources and <node-bin-dir> with the directory holding node
+# and npm (the same PATH your general bridge unit exports; an absolute path, since
+# ~ does not expand inside the quotes), then:
 #   systemctl --user daemon-reload && systemctl --user enable --now telegram-brain.service
 [Unit]
 Description=Telegram brain bot (bridge, brain profile)
@@ -21,14 +23,15 @@ Environment=CLAUDE_CONFIG_DIR=%h/.telegram-brain/claude
 # dotenv reads this file instead of the repo's .env, so the general bridge's
 # settings never fill gaps in the brain's.
 Environment=DOTENV_CONFIG_PATH=%h/.config/telegram-brain/env
-ExecStart=/bin/bash -c 'source <vertex-env-file> && export ANTHROPIC_MODEL=claude-opus-5-5[1m] CLOUD_ML_REGION=eu && cd %h/SourceCode/telegram-bot && exec npm run bridge'
+ExecStart=/bin/bash -c 'source <vertex-env-file> && export PATH="<node-bin-dir>:$PATH" && export ANTHROPIC_MODEL=claude-opus-5-5[1m] CLOUD_ML_REGION=eu && cd %h/SourceCode/telegram-bot && exec npm run bridge'
 Restart=always
 RestartSec=10
 # On systemd 254+ a crash otherwise enters failed before each auto-restart, so
 # OnFailure= would mail every RestartSec. In direct mode the restarts are silent,
 # and OnFailure= fires once, when the start limit in [Unit] gives up.
 RestartMode=direct
-MemoryMax=1500M
+# Two turns answering at once peaked near 1.8 GB on the reference host.
+MemoryMax=2500M
 # An OOM kill of one CLI child then costs that turn an "Error:" reply instead of stopping the whole bot.
 OOMPolicy=continue
 NoNewPrivileges=yes

@@ -4,6 +4,7 @@
 // who may ask, commands, subjects, the per-subject queue, Stop, drafts,
 // delivery (HTML chunks, optional voice, the 🆕 button), and failure replies.
 
+import { randomInt } from 'node:crypto';
 import type { CallbackEvent, ChannelMessage, SendOptions, StopEvent } from '../channels/channel.js';
 import { stripMarkdownForSpeech } from '../markdownStrip.js';
 import {
@@ -171,7 +172,7 @@ export class BrainApp {
   private readonly sessions = new Map<string, Set<string>>();
   // From a random start in [1, 2^30): a Stop that Telegram queued while the bot was down then
   // cannot match the first draft after the restart.
-  private draftSeq = 1 + Math.floor(Math.random() * (2 ** 30 - 1));
+  private draftSeq = randomInt(1, 2 ** 30);
   private restarting = false;
 
   constructor(private readonly d: BrainAppDeps) {
@@ -270,7 +271,7 @@ export class BrainApp {
 
   async onCallback(cb: CallbackEvent): Promise<void> {
     const tap = parseNewButton(cb.data);
-    if (!this.accepts(cb.senderId, cb.chatType) || tap === null || tap.chatId !== cb.chatId) {
+    if (!this.accepts(cb.senderId, cb.chatType) || tap?.chatId !== cb.chatId) {
       await this.acknowledge(cb.id);
       return;
     }

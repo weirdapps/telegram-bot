@@ -7,6 +7,7 @@ import {
   LOG_EXCHANGES,
   SubjectStore,
   TITLE_CHARS,
+  cut,
   idleHours,
   rebuildSeed,
   recordExchange,
@@ -123,6 +124,25 @@ describe('subject helpers', () => {
     expect(seed).toContain('«Q1»');
     expect(seed.indexOf('Q1: Q1')).toBeLessThan(seed.indexOf('Q2: Q2'));
     expect(seed).toContain('A2: A2');
+  });
+});
+
+describe('cut', () => {
+  // The code unit at max - 2 is the last one kept before the ellipsis.
+  it('drops a lone high surrogate at the cut point', () => {
+    expect(cut(`${'x'.repeat(38)}\uD83Dyyy`, 40)).toBe(`${'x'.repeat(38)}…`);
+  });
+
+  it('keeps a low surrogate at the cut point, with the high half before it', () => {
+    expect(cut(`${'x'.repeat(37)}😀yyy`, 40)).toBe(`${'x'.repeat(37)}😀…`);
+  });
+
+  it('drops a whole pair that straddles the cut', () => {
+    expect(cut(`${'x'.repeat(38)}😀😀`, 40)).toBe(`${'x'.repeat(38)}…`);
+  });
+
+  it('leaves only the ellipsis when nothing fits before it', () => {
+    expect(cut('xyz', 1)).toBe('…');
   });
 });
 

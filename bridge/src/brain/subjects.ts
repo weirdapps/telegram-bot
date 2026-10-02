@@ -38,8 +38,9 @@ const VOICE_MODES: ReadonlySet<string> = new Set(['mirror', 'always', 'off']);
 export function cut(s: string, max: number): string {
   if (s.length <= max) return s;
   // Never keep only the high half of a surrogate pair (an emoji): that is invalid UTF-16.
-  const last = s.charCodeAt(max - 2);
-  const end = last >= 0xd800 && last <= 0xdbff ? max - 2 : max - 1;
+  // codePointAt reads a whole pair there above 0xFFFF, and a lone high half as itself.
+  const cp = s.codePointAt(max - 2) ?? 0;
+  const end = cp > 0xffff || (cp >= 0xd800 && cp <= 0xdbff) ? max - 2 : max - 1;
   return `${s.slice(0, end)}…`;
 }
 

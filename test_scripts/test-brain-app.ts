@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi, type Mock } from 'vitest';
+import { randomInt } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -26,6 +27,12 @@ import {
   usage,
   type Run,
 } from './brainFakes.js';
+
+// The real randomInt, except where a test pins the draft counter's random start.
+vi.mock('node:crypto', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:crypto')>();
+  return { ...actual, randomInt: vi.fn(actual.randomInt) };
+});
 
 interface Sent {
   kind: 'rich' | 'plain' | 'voice';
@@ -272,6 +279,14 @@ describe('BrainApp', () => {
     });
     expect(await store.get('500:0')).toBeUndefined();
     expect(out.callbacks.map((c) => c.id)).toEqual(['cb1', 'cb2']);
+  });
+
+  it('acknowledges a tap whose data it does not know, and closes nothing', async () => {
+    const { a } = app(answer('A', 'id-1'));
+    await a.onText(message('question'));
+    await a.onCallback(tapOn('new:500', 'cb1'));
+    expect(await store.get('500:0')).toBeDefined();
+    expect(out.callbacks).toEqual([{ id: 'cb1', text: undefined }]);
   });
 
   it('an old 🆕 button closes nothing once its subject is closed; the current one still closes', async () => {
@@ -730,7 +745,8 @@ describe('BrainApp', () => {
   });
 
   it('starts its draft ids at random, so a Stop queued before a restart stops no new turn', async () => {
-    const random = vi.spyOn(Math, 'random').mockReturnValue(0); // the lowest start there is
+    // randomInt(min, max) draws from [min, max).
+    const random = vi.mocked(randomInt).mockImplementation((min) => min); // the lowest start there is
     try {
       const gate = deferred();
       const { a } = app({ gate: gate.promise, messages: answer('Alice owns it.', 'id-1') });
@@ -740,11 +756,11 @@ describe('BrainApp', () => {
       gate.resolve();
       await p;
       expect(out.last().text).toBe('Alice owns it.');
-      expect(out.draftId(0)).toBeGreaterThan(1);
-      random.mockReturnValue(1 - 2 ** -53); // the highest
+      expect(out.draftId(0)).toBe(2);
+      random.mockImplementation((_min, max) => max - 1); // the highest
       const later = app(answer('ok', 'id-2'));
       await later.a.onText(message('q', { threadId: 9 }));
-      expect(out.draftId(1)).toBeLessThanOrEqual(2 ** 30);
+      expect(out.draftId(1)).toBe(2 ** 30);
     } finally {
       random.mockRestore();
     }
