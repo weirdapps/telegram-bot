@@ -2,14 +2,18 @@
 //
 // The brain profile: what TELEGRAM_BRIDGE_PROFILE=brain reads from the
 // environment, and the Agent SDK options every brain turn runs with. The
-// options are the safety boundary: one built-in tool, two MCP servers, an exact
-// allowlist, and 'dontAsk', which denies anything not on it.
+// options are the safety boundary: one built-in tool, two MCP servers (three
+// when BRIDGE_FABRIC_MCP_COMMAND is set), an exact allowlist, and 'dontAsk',
+// which denies anything not on it.
 
 import { readFileSync } from 'node:fs';
 import type { Options } from '@anthropic-ai/claude-agent-sdk';
 
 export const BRAIN_SERVER = 'second-brain';
 export const NEWS_SERVER = 'news-reader';
+/** Optional: a stdio server with one tool, ask_fabric, that relays a question to another host. */
+export const FABRIC_SERVER = 'fabric';
+export const FABRIC_TOOL = `mcp__${FABRIC_SERVER}__ask_fabric`;
 
 const SECOND_BRAIN_TOOLS = [
   'attachment_image_search',
@@ -67,6 +71,8 @@ export interface BrainProfile {
   readonly brainMcpUrl: string;
   readonly brainMcpToken: string;
   readonly newsMcpCommand: string;
+  /** Unset leaves the bot exactly as without it: no fabric server, no ask_fabric tool. */
+  readonly fabricMcpCommand?: string;
   readonly systemPrompt: string;
   readonly cwd: string;
   readonly model: string;
@@ -130,11 +136,13 @@ export function loadBrainProfile(
   const newsMcpCommand = need(env, 'BRIDGE_NEWS_MCP_COMMAND');
   const base = readNeeded(basePromptPath, 'BASE_PROMPT_PATH', 'the base prompt');
   const persona = readNeeded(personaFile, 'TELEGRAM_BRIDGE_SYSTEM_PROMPT_FILE', 'the persona file');
+  const fabricMcpCommand = env.BRIDGE_FABRIC_MCP_COMMAND?.trim();
   return {
     statePath,
     brainMcpUrl,
     brainMcpToken: readNeeded(tokenFile, 'BRAIN_MCP_TOKEN_FILE', 'the MCP token'),
     newsMcpCommand,
+    ...(fabricMcpCommand ? { fabricMcpCommand } : {}),
     systemPrompt: `${base}\n\n${persona}`,
     cwd: env.TELEGRAM_BRIDGE_CWD?.trim() || configDir,
     model: env.ANTHROPIC_MODEL?.trim() || '(SDK default)',
@@ -163,7 +171,7 @@ export function buildBrainOptions(
     abortController,
     cwd: p.cwd,
     tools: ['WebSearch'],
-    allowedTools: [...BRAIN_ALLOWED_TOOLS],
+    allowedTools: [...BRAIN_ALLOWED_TOOLS, ...(p.fabricMcpCommand ? [FABRIC_TOOL] : [])],
     permissionMode: 'dontAsk',
     strictMcpConfig: true,
     mcpServers: {
@@ -178,6 +186,18 @@ export function buildBrainOptions(
         timeout: 90_000,
       },
       [NEWS_SERVER]: { type: 'stdio', command: p.newsMcpCommand, args: [], timeout: 90_000 },
+      // The relay answers within about 100 s by design; 110 s still fails it before
+      // the 120 s silence watchdog would abort the whole turn.
+      ...(p.fabricMcpCommand
+        ? {
+            [FABRIC_SERVER]: {
+              type: 'stdio' as const,
+              command: p.fabricMcpCommand,
+              args: [],
+              timeout: 110_000,
+            },
+          }
+        : {}),
     },
     plugins: [],
     settingSources: [],

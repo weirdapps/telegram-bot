@@ -196,25 +196,27 @@ subject, streamed draft answers, voice notes. Design:
 `docs/superpowers/specs/2026-10-01-brain-bot-design.md`.
 
 - Tools, exactly: the second-brain MCP over local HTTP (27 tools), the
-  news-reader MCP (4), and `WebSearch`. `permissionMode: 'dontAsk'` denies
+  news-reader MCP (4), `WebSearch`, and `ask_fabric` when
+  `BRIDGE_FABRIC_MCP_COMMAND` is set. `permissionMode: 'dontAsk'` denies
   everything else, and no plugin loads.
 - A subject is one Claude session keyed by chat and topic (`chatId:threadId`),
   stored at `TELEGRAM_BRIDGE_STATE_PATH`. With Threaded Mode on in BotFather,
   each topic is its own subject.
 - Commands: `/new` (or `/clear`, or the 🆕 button), `/context`, `/voice`, `/help`.
 
-| Variable                             | Purpose                                                                                              |
-| ------------------------------------ | ---------------------------------------------------------------------------------------------------- |
-| `TELEGRAM_BRIDGE_PROFILE=brain`      | Selects this profile; unset keeps the general bridge; any other value refuses to start.              |
-| `TELEGRAM_BOT_TOKEN`                 | The brain bot's own token.                                                                           |
-| `TELEGRAM_BRIDGE_STATE_PATH`         | The subject store, e.g. `~/.telegram-brain/subjects.json`.                                           |
-| `TELEGRAM_BRIDGE_BOT_TMPDIR`         | Voice note download dir; default `<state dir>/inbox`.                                                |
-| `TELEGRAM_BRIDGE_SYSTEM_PROMPT_FILE` | Private persona file, appended to `bridge/src/brain/prompts/brain-base.md`.                          |
-| `CLAUDE_CONFIG_DIR`                  | Where transcripts go; set for the whole process. Created if missing (the default working directory). |
-| `TELEGRAM_BRIDGE_CWD`                | The SDK's working directory, created if missing; default `CLAUDE_CONFIG_DIR`.                        |
-| `BRIDGE_BRAIN_MCP_URL`               | `http://127.0.0.1:8765/mcp`.                                                                         |
-| `BRAIN_MCP_TOKEN_FILE`               | The bearer token file the second-brain HTTP server reads.                                            |
-| `BRIDGE_NEWS_MCP_COMMAND`            | The news-reader MCP launcher.                                                                        |
+| Variable                             | Purpose                                                                                                       |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------- |
+| `TELEGRAM_BRIDGE_PROFILE=brain`      | Selects this profile; unset keeps the general bridge; any other value refuses to start.                       |
+| `TELEGRAM_BOT_TOKEN`                 | The brain bot's own token.                                                                                    |
+| `TELEGRAM_BRIDGE_STATE_PATH`         | The subject store, e.g. `~/.telegram-brain/subjects.json`.                                                    |
+| `TELEGRAM_BRIDGE_BOT_TMPDIR`         | Voice note download dir; default `<state dir>/inbox`.                                                         |
+| `TELEGRAM_BRIDGE_SYSTEM_PROMPT_FILE` | Private persona file, appended to `bridge/src/brain/prompts/brain-base.md`.                                   |
+| `CLAUDE_CONFIG_DIR`                  | Where transcripts go; set for the whole process. Created if missing (the default working directory).          |
+| `TELEGRAM_BRIDGE_CWD`                | The SDK's working directory, created if missing; default `CLAUDE_CONFIG_DIR`.                                 |
+| `BRIDGE_BRAIN_MCP_URL`               | `http://127.0.0.1:8765/mcp`.                                                                                  |
+| `BRAIN_MCP_TOKEN_FILE`               | The bearer token file the second-brain HTTP server reads.                                                     |
+| `BRIDGE_NEWS_MCP_COMMAND`            | The news-reader MCP launcher.                                                                                 |
+| `BRIDGE_FABRIC_MCP_COMMAND`          | Optional. A stdio MCP launcher whose `ask_fabric` tool relays a question to another host; unset adds nothing. |
 
 `TELEGRAM_BRIDGE_ALLOWED_SENDER_IDS`, the seven voice variables and the Vertex
 variables are required as for the general bridge, `TELEGRAM_LOG_LEVEL` is

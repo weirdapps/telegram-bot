@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   BRAIN_ALLOWED_TOOLS,
+  FABRIC_TOOL,
   BrainProfileError,
   assertKnownProfile,
   buildBrainOptions,
@@ -192,6 +193,36 @@ describe('buildBrainOptions', () => {
       args: [],
       timeout: 90_000,
     });
+  });
+
+  it('adds nothing for the fabric relay unless BRIDGE_FABRIC_MCP_COMMAND is set', () => {
+    const p = loadBrainProfile(env(), join(dir, 'base.md'));
+    expect(p.fabricMcpCommand).toBeUndefined();
+    const o = buildBrainOptions(p, {}, new AbortController(), {});
+    expect(Object.keys(o.mcpServers ?? {})).toEqual(['second-brain', 'news-reader']);
+    expect(o.allowedTools).not.toContain(FABRIC_TOOL);
+    expect(
+      loadBrainProfile(env({ BRIDGE_FABRIC_MCP_COMMAND: '  ' }), join(dir, 'base.md'))
+        .fabricMcpCommand,
+    ).toBeUndefined();
+  });
+
+  it('with BRIDGE_FABRIC_MCP_COMMAND, allows exactly ask_fabric over stdio, under the silence watchdog', () => {
+    const p = loadBrainProfile(
+      env({ BRIDGE_FABRIC_MCP_COMMAND: '/opt/relay/run.sh' }),
+      join(dir, 'base.md'),
+    );
+    expect(p.fabricMcpCommand).toBe('/opt/relay/run.sh');
+    const o = buildBrainOptions(p, {}, new AbortController(), {});
+    expect(Object.keys(o.mcpServers ?? {})).toEqual(['second-brain', 'news-reader', 'fabric']);
+    expect(o.mcpServers?.fabric).toEqual({
+      type: 'stdio',
+      command: '/opt/relay/run.sh',
+      args: [],
+      timeout: 110_000,
+    });
+    expect(o.allowedTools).toEqual([...BRAIN_ALLOWED_TOOLS, 'mcp__fabric__ask_fabric']);
+    expect(o.permissionMode).toBe('dontAsk');
   });
 
   it('maps the plan to resume, sessionId, model and region', () => {
