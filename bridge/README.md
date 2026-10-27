@@ -195,7 +195,7 @@ over the owner's second-brain store: per-subject context, `/new` to close a
 subject, streamed draft answers, voice notes. Design:
 `docs/superpowers/specs/2026-10-01-brain-bot-design.md`.
 
-- Tools, exactly: the second-brain MCP over local HTTP (27 tools), the
+- Tools, exactly: the second-brain MCP over local HTTP (30 tools), the
   news-reader MCP (4), `WebSearch`, and `ask_fabric` when
   `BRIDGE_FABRIC_MCP_COMMAND` is set. `permissionMode: 'dontAsk'` denies
   everything else, and no plugin loads.
