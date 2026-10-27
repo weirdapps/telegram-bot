@@ -19,6 +19,8 @@ const SECOND_BRAIN_TOOLS = [
   'attachment_image_search',
   'conversation_context',
   'email_thread',
+  'figures',
+  'get_item',
   'meeting_prep',
   'outlook_live_search',
   'person_context',
@@ -43,6 +45,7 @@ const SECOND_BRAIN_TOOLS = [
   'teams_chat_summary',
   'teams_thread_context',
   'topic_context',
+  'topic_page',
 ] as const;
 
 const NEWS_TOOLS = ['digest_history', 'news_stats', 'recent_for_tickers', 'search_news'] as const;
