@@ -2,9 +2,9 @@
 //
 // The brain profile: what TELEGRAM_BRIDGE_PROFILE=brain reads from the
 // environment, and the Agent SDK options every brain turn runs with. The
-// options are the safety boundary: one built-in tool, two MCP servers (three
-// when BRIDGE_FABRIC_MCP_COMMAND is set), an exact allowlist, and 'dontAsk',
-// which denies anything not on it.
+// options are the safety boundary: one built-in tool, two MCP servers (plus one
+// each when BRIDGE_FABRIC_MCP_COMMAND or BRIDGE_METRICS_MCP_COMMAND is set), an
+// exact allowlist, and 'dontAsk', which denies anything not on it.
 
 import { readFileSync } from 'node:fs';
 import type { Options } from '@anthropic-ai/claude-agent-sdk';
@@ -14,6 +14,11 @@ export const NEWS_SERVER = 'news-reader';
 /** Optional: a stdio server with one tool, ask_fabric, that relays a question to another host. */
 export const FABRIC_SERVER = 'fabric';
 export const FABRIC_TOOL = `mcp__${FABRIC_SERVER}__ask_fabric`;
+/**
+ * Optional: a stdio server of stored figures (a metrics catalog), with the tools it may call
+ * named one by one in BRIDGE_METRICS_MCP_TOOLS. No list, no server: the allowlist stays exact.
+ */
+export const METRICS_SERVER = 'metrics';
 
 const SECOND_BRAIN_TOOLS = [
   'attachment_image_search',
@@ -76,6 +81,9 @@ export interface BrainProfile {
   readonly newsMcpCommand: string;
   /** Unset leaves the bot exactly as without it: no fabric server, no ask_fabric tool. */
   readonly fabricMcpCommand?: string;
+  /** Unset leaves the bot exactly as without it; set, metricsTools names every tool allowed. */
+  readonly metricsMcpCommand?: string;
+  readonly metricsTools?: readonly string[];
   readonly systemPrompt: string;
   readonly cwd: string;
   readonly model: string;
@@ -140,12 +148,31 @@ export function loadBrainProfile(
   const base = readNeeded(basePromptPath, 'BASE_PROMPT_PATH', 'the base prompt');
   const persona = readNeeded(personaFile, 'TELEGRAM_BRIDGE_SYSTEM_PROMPT_FILE', 'the persona file');
   const fabricMcpCommand = env.BRIDGE_FABRIC_MCP_COMMAND?.trim();
+  const metricsMcpCommand = env.BRIDGE_METRICS_MCP_COMMAND?.trim();
+  const metricsTools = (env.BRIDGE_METRICS_MCP_TOOLS ?? '')
+    .split(',')
+    .map((t) => t.trim())
+    .filter(Boolean);
+  if (metricsMcpCommand && metricsTools.length === 0) {
+    throw new BrainProfileError(
+      'BRIDGE_METRICS_MCP_TOOLS must name the tools allowed on the metrics server',
+      'BRIDGE_METRICS_MCP_TOOLS',
+    );
+  }
+  const badTool = metricsTools.find((t) => !/^[A-Za-z0-9_]+$/.test(t));
+  if (badTool !== undefined) {
+    throw new BrainProfileError(
+      `BRIDGE_METRICS_MCP_TOOLS: ${JSON.stringify(badTool)} is not a tool name`,
+      'BRIDGE_METRICS_MCP_TOOLS',
+    );
+  }
   return {
     statePath,
     brainMcpUrl,
     brainMcpToken: readNeeded(tokenFile, 'BRAIN_MCP_TOKEN_FILE', 'the MCP token'),
     newsMcpCommand,
     ...(fabricMcpCommand ? { fabricMcpCommand } : {}),
+    ...(metricsMcpCommand ? { metricsMcpCommand, metricsTools } : {}),
     systemPrompt: `${base}\n\n${persona}`,
     cwd: env.TELEGRAM_BRIDGE_CWD?.trim() || configDir,
     model: env.ANTHROPIC_MODEL?.trim() || '(SDK default)',
@@ -174,7 +201,13 @@ export function buildBrainOptions(
     abortController,
     cwd: p.cwd,
     tools: ['WebSearch'],
-    allowedTools: [...BRAIN_ALLOWED_TOOLS, ...(p.fabricMcpCommand ? [FABRIC_TOOL] : [])],
+    allowedTools: [
+      ...BRAIN_ALLOWED_TOOLS,
+      ...(p.fabricMcpCommand ? [FABRIC_TOOL] : []),
+      ...(p.metricsMcpCommand
+        ? (p.metricsTools ?? []).map((t) => `mcp__${METRICS_SERVER}__${t}`)
+        : []),
+    ],
     permissionMode: 'dontAsk',
     strictMcpConfig: true,
     mcpServers: {
@@ -198,6 +231,16 @@ export function buildBrainOptions(
               command: p.fabricMcpCommand,
               args: [],
               timeout: 110_000,
+            },
+          }
+        : {}),
+      ...(p.metricsMcpCommand
+        ? {
+            [METRICS_SERVER]: {
+              type: 'stdio' as const,
+              command: p.metricsMcpCommand,
+              args: [],
+              timeout: 90_000,
             },
           }
         : {}),
