@@ -228,6 +228,49 @@ describe('buildBrainOptions', () => {
     expect(o.permissionMode).toBe('dontAsk');
   });
 
+  it('adds no metrics server unless BRIDGE_METRICS_MCP_COMMAND is set', () => {
+    const p = loadBrainProfile(env(), join(dir, 'base.md'));
+    expect(p.metricsMcpCommand).toBeUndefined();
+    const o = buildBrainOptions(p, {}, new AbortController(), {});
+    expect(Object.keys(o.mcpServers ?? {})).not.toContain('metrics');
+  });
+
+  it('refuses a metrics server without an explicit tool list, or with a bad tool name', () => {
+    expect(() =>
+      loadBrainProfile(env({ BRIDGE_METRICS_MCP_COMMAND: '/opt/m/run.sh' }), join(dir, 'base.md')),
+    ).toThrow(/BRIDGE_METRICS_MCP_TOOLS/);
+    expect(() =>
+      loadBrainProfile(
+        env({ BRIDGE_METRICS_MCP_COMMAND: '/opt/m/run.sh', BRIDGE_METRICS_MCP_TOOLS: 'a,b c' }),
+        join(dir, 'base.md'),
+      ),
+    ).toThrow(/not a tool name/);
+  });
+
+  it('with BRIDGE_METRICS_MCP_COMMAND, allows exactly the listed tools over stdio', () => {
+    const p = loadBrainProfile(
+      env({
+        BRIDGE_METRICS_MCP_COMMAND: '/opt/m/run.sh',
+        BRIDGE_METRICS_MCP_TOOLS: 'find, history ,status',
+      }),
+      join(dir, 'base.md'),
+    );
+    const o = buildBrainOptions(p, {}, new AbortController(), {});
+    expect(o.mcpServers?.metrics).toEqual({
+      type: 'stdio',
+      command: '/opt/m/run.sh',
+      args: [],
+      timeout: 90_000,
+    });
+    expect(o.allowedTools).toEqual([
+      ...BRAIN_ALLOWED_TOOLS,
+      'mcp__metrics__find',
+      'mcp__metrics__history',
+      'mcp__metrics__status',
+    ]);
+    expect(o.permissionMode).toBe('dontAsk');
+  });
+
   it('maps the plan to resume, sessionId, model and region', () => {
     const resumed = buildBrainOptions(profile, { resume: 's1' }, new AbortController(), {});
     expect(resumed.resume).toBe('s1');
