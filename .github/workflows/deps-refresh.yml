@@ -8,7 +8,7 @@ permissions:
   pull-requests: write
 jobs:
   refresh:
-    uses: weirdapps/shared-workflows/.github/workflows/deps-refresh.yml@1cdc75d954fa1d60ef35937b21fccde923f42f9e # main
+    uses: weirdapps/shared-workflows/.github/workflows/deps-refresh.yml@66658bc1c4962fd23197e31ce96c9dc3ebf60918 # main
     with:
       node_version: '22'
       # Node 22.23.2 ships npm 10.9.3, whose arborist cannot walk this tree's peer
