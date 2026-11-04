@@ -158,11 +158,11 @@ describe('buildBrainOptions', () => {
     ]);
   });
 
-  it('allowlists 30 brain tools, 4 news tools and web search, and nothing that writes or fetches', () => {
-    expect(BRAIN_ALLOWED_TOOLS).toHaveLength(35);
-    expect(BRAIN_ALLOWED_TOOLS.filter((t) => t.startsWith('mcp__second-brain__'))).toHaveLength(30);
+  it('allowlists 12 brain tools, 4 news tools and web search, and nothing that writes or fetches', () => {
+    expect(BRAIN_ALLOWED_TOOLS).toHaveLength(17);
+    expect(BRAIN_ALLOWED_TOOLS.filter((t) => t.startsWith('mcp__second-brain__'))).toHaveLength(12);
     expect(BRAIN_ALLOWED_TOOLS).toContain('mcp__second-brain__sql_query');
-    for (const t of ['figures', 'get_item', 'topic_page']) {
+    for (const t of ['figures', 'read', 'search', 'query_items']) {
       expect(BRAIN_ALLOWED_TOOLS).toContain(`mcp__second-brain__${t}`);
     }
     expect(BRAIN_ALLOWED_TOOLS).toContain('mcp__news-reader__search_news');

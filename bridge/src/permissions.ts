@@ -37,7 +37,7 @@ export const canUseTool: CanUseTool = async (toolName, input) => {
     'WebFetch',
     'WebSearch',
     // Add MCP read-only tools you trust here, e.g.:
-    // 'mcp__second-brain__search_emails',
+    // 'mcp__second-brain__search',
     // 'mcp__outlook-bridge__outlook_list_calendar',
   ]);
 
